@@ -64,8 +64,48 @@ def start_health_check_server():
     except Exception as e:
         logger.error(f"Failed to start health check server on port {port_str}: {e}")
 
-# Database for subscribed users (JSON file)
+# Database for subscribed users and user settings (JSON files)
 SUBSCRIBERS_FILE = "subscribers.json"
+USER_SETTINGS_FILE = "user_settings.json"
+
+DEFAULT_NICHE = "សាលាបង្រៀនធ្វើម្ហូបហាក់ហេង"
+DEFAULT_DURATION = "60 វិនាទី"
+DEFAULT_DAILY_TIME = "5:00 ព្រឹក"
+
+def load_user_settings() -> dict:
+    if os.path.exists(USER_SETTINGS_FILE):
+        try:
+            with open(USER_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load user settings: {e}")
+    return {}
+
+def save_user_settings_to_file(settings: dict):
+    try:
+        with open(USER_SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(settings, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save user settings: {e}")
+
+user_settings = load_user_settings()
+
+def get_user_config(chat_id: int) -> dict:
+    str_id = str(chat_id)
+    if str_id not in user_settings:
+        user_settings[str_id] = {
+            "niche": DEFAULT_NICHE,
+            "duration": DEFAULT_DURATION,
+            "daily_time": DEFAULT_DAILY_TIME
+        }
+        save_user_settings_to_file(user_settings)
+    return user_settings[str_id]
+
+def update_user_config(chat_id: int, key: str, value: str):
+    cfg = get_user_config(chat_id)
+    cfg[key] = value
+    user_settings[str(chat_id)] = cfg
+    save_user_settings_to_file(user_settings)
 
 def load_subscribers() -> set:
     if os.path.exists(SUBSCRIBERS_FILE):
@@ -95,7 +135,6 @@ def split_message(text: str, max_length: int = 4000) -> list[str]:
         if len(text) <= max_length:
             chunks.append(text)
             break
-        # Find newline to split nicely
         idx = text.rfind("\n", 0, max_length)
         if idx == -1:
             idx = max_length
@@ -124,7 +163,6 @@ async def safe_edit(status_msg, text: str):
             await status_msg.edit_text(chunks[0])
         except Exception as e:
             logger.error(f"Failed to edit status message: {e}")
-    # If there are additional chunks, send them as subsequent messages
     for extra_chunk in chunks[1:]:
         try:
             await status_msg.reply_text(extra_chunk, parse_mode="Markdown")
@@ -134,134 +172,166 @@ async def safe_edit(status_msg, text: str):
 def get_main_keyboard():
     keyboard = [
         [
-            InlineKeyboardButton("🎬 របៀបសរសេរ Script", callback_data="btn_how_to_script"),
-            InlineKeyboardButton("💡 គំនិតប្រធានបទថ្ងៃនេះ", callback_data="btn_ideas")
+            InlineKeyboardButton("⚡ បង្កើត Script ឥឡូវនេះ (/now)", callback_data="btn_now"),
+            InlineKeyboardButton("💡 គំនិតប្រធានបទ (/ideas)", callback_data="btn_ideas")
         ],
         [
-            InlineKeyboardButton("⏱️ កំណត់ប្រវែងនាទី (30s / 3mn / 5mn)", callback_data="btn_duration_guide")
+            InlineKeyboardButton("🎯 ប្តូរវិស័យ (/setniche)", callback_data="btn_guide_niche"),
+            InlineKeyboardButton("⏱️ ប្តូររយៈពេល (/setduration)", callback_data="btn_guide_duration")
         ],
         [
-            InlineKeyboardButton("🔔 ទទួលសាររាល់ព្រឹក (08:00 AM)", callback_data="btn_subscribe"),
-            InlineKeyboardButton("🔕 ផ្អាកការផ្ញើ", callback_data="btn_unsubscribe")
-        ],
-        [
-            InlineKeyboardButton("📖 ការណែនាំលម្អិត (Help)", callback_data="btn_help")
+            InlineKeyboardButton("🔔 ទទួលសាររាល់ព្រឹក", callback_data="btn_subscribe"),
+            InlineKeyboardButton("📖 ការណែនាំ (Help)", callback_data="btn_help")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_name = update.effective_user.first_name if update.effective_user else "អ្នកបង្កើតមាតិកា"
-    welcome_text = (
-        f"👋 **សួស្តីបង {user_name}! ខ្ញុំជា 3WHs Video AI Assistant** 🎬✨\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "ខ្ញុំជាជំនួយការជួយបងផលិត **Script វីដេអូខ្លី និងវែង** ឱ្យមានភាពទាក់ទាញ ខ្លឹម និងងាយស្រួលថត តាមរូបមន្ត **3WHs** ៖\n\n"
-        "🎯 **1. Hook** ៖ ពាក្យទាក់ទាញខ្លាំងក្នុង ៣ វិនាទីដំបូង\n"
-        "📌 **2. What** ៖ បញ្ជាក់ប្រធានបទ ឬបញ្ហាឱ្យចំៗ\n"
-        "🔥 **3. Why** ៖ ហេតុអ្វីត្រូវដឹង & ផលចំណេញដែលទទួលបាន\n"
-        "👥 **4. Who** ៖ អ្នកណាខ្លះដែលត្រូវដឹង (Target Audience)\n"
-        "🛠️ **5. How** ៖ ដំណោះស្រាយ និងជំហានអនុវត្តជាក់ស្តែង\n"
-        "📣 **6. CTA** ៖ ពាក្យបិទបញ្ចប់វីដេអូជំរុញសកម្មភាព\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "⚡ **របៀបប្រើប្រាស់រហ័ស៖**\n"
-        "1️⃣ **បង្កើត Script ភ្លាមៗ** ៖ វាយ `/script <ប្រធានបទ> <ប្រវែង>`\n"
-        "   👉 *ឧទាហរណ៍៖* `/script របៀបគូសអគារកោងក្នុង SketchUp 60s`\n\n"
-        "2️⃣ **សុំគំនិតប្រធានបទថ្ងៃនេះ** ៖ វាយ `/ideas`\n"
-        "3️⃣ **ជជែកពិគ្រោះយោបល់** ៖ ផ្ញើសារធម្មតាមកកាន់ខ្ញុំបានគ្រប់ពេល!\n\n"
-        "👇 *សូមជ្រើសរើសមុខងារដែលបងចង់ប្រើខាងក្រោម៖*"
+def render_start_message(chat_id: int) -> str:
+    cfg = get_user_config(chat_id)
+    niche = cfg.get("niche", DEFAULT_NICHE)
+    duration = cfg.get("duration", DEFAULT_DURATION)
+    daily_time = cfg.get("daily_time", DEFAULT_DAILY_TIME)
+
+    return (
+        "👋 **សួស្តី! ខ្ញុំជាជំនួយការតែង Script វីដេអូ 3WHs** 🎬\n\n"
+        "⚙️ **ការកំណត់បច្ចុប្បន្នរបស់អ្នក៖**\n"
+        f"• 🎯 **វិស័យ៖** {niche}\n"
+        f"• ⏱️ **រយៈពេលវីដេអូ៖** {duration}\n"
+        f"• ⏰ **ម៉ោងផ្ញើស្វ័យប្រវត្ត៖** ម៉ោង {daily_time} រាល់ថ្ងៃ\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "💡 **តើអ្នកចង់ធ្វើអ្វីឥឡូវនេះ?**\n\n"
+        "1️⃣ **បង្កើត Script តាមប្រធានបទដែលអ្នកចង់បាន៖**\n"
+        "   👉 វាយពាក្យ៖ `/gen [ប្រធានបទ]`\n"
+        "   *ឧទាហរណ៍៖* `/gen សាលាបង្រៀនធ្វើម្ហូប`\n\n"
+        "2️⃣ **ប្តូរវិស័យផ្តោតចម្បង៖**\n"
+        "   👉 វាយពាក្យ៖ `/setniche [ឈ្មោះវិស័យ]`\n"
+        "   *ឧទាហរណ៍៖* `/setniche អាហារ & ភេសជ្ជៈ`\n\n"
+        "3️⃣ **ប្តូររយៈពេលវីដេអូ (60s, 2m, 3m):**\n"
+        "   👉 វាយពាក្យ៖ `/setduration [រយៈពេល]`\n"
+        "   *ឧទាហរណ៍៖* `/setduration 2 នាទី`\n\n"
+        "4️⃣ **បង្កើត Script ថ្ងៃនេះភ្លាមៗ៖**\n"
+        "   👉 វាយពាក្យ៖ `/now`"
     )
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    msg = render_start_message(chat_id)
     if update.message:
         await update.message.reply_text(
-            welcome_text,
+            msg,
             parse_mode="Markdown",
             reply_markup=get_main_keyboard()
         )
     elif update.callback_query:
         await update.callback_query.message.reply_text(
-            welcome_text,
+            msg,
             parse_mode="Markdown",
             reply_markup=get_main_keyboard()
         )
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = (
-        "📖 **បញ្ជីពាក្យបញ្ជា និងការណែនាំ (Commands Guide)**\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "🔹 `/start` ៖ បើកផ្ទាំងដើម\n\n"
-        "🔹 `/script <ប្រធានបទ> <ប្រវែង>` ៖ បង្កើត Script វីដេអូ 3WHs ពេញលេញ\n"
-        "   • វីដេអូខ្លី 60 វិនាទី ៖ `/script របៀបគ្រប់គ្រងលុយ 60s`\n"
-        "   • វីដេអូមធ្យម 3 នាទី ៖ `/script យុទ្ធសាស្ត្រលក់អនឡាញ 3mn`\n"
-        "   • វីដេអូវែង 5-10 នាទី ៖ `/script មូលដ្ឋានគ្រឹះក្នុងការវិនិយោគ 5mn`\n\n"
-        "🔹 `/ideas [វិស័យ]` ៖ ទទួលបានគំនិតប្រធានបទកំពុងពេញនិយមថ្ងៃនេះ\n\n"
-        "🔹 `/subscribe` ៖ ចុះឈ្មោះទទួល Script និងគំនិតមាតិកាស្វ័យប្រវត្តិរាល់ព្រឹក (08:00 AM)\n\n"
-        "🔹 `/unsubscribe` ៖ ផ្អាកការទទួលសារប្រចាំថ្ងៃ\n\n"
-        "🔹 `/status` ៖ ពិនិត្យមើលស្ថានភាពនៃការតភ្ជាប់ Bot\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 *អ្នកក៏អាចវាយសារជជែកពិគ្រោះយោបល់ជាភាសាខ្មែរជាមួយខ្ញុំដោយផ្ទាល់បានគ្រប់ពេល!*"
-    )
-    if update.message:
-        await safe_reply(update.message, help_text)
-    elif update.callback_query:
-        await safe_reply(update.callback_query.message, help_text)
+async def gen_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    cfg = get_user_config(chat_id)
+    default_dur = cfg.get("duration", DEFAULT_DURATION)
 
-async def script_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        guide_text = (
-            "🎬 **របៀបបង្កើត Script វីដេអូ 3WHs**\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "សូមវាយពាក្យ `/script` បន្ទាប់មកដាក់ **ឈ្មោះប្រធានបទ** និង **ប្រវែងនាទី** ដែលអ្នកចង់បាន។\n\n"
-            "📌 **គំរូសរសេរងាយៗ៖**\n"
-            "• **វីដេអូខ្លី (30s - 60s TikTok / Reels)** ៖\n"
-            "  `/script របៀបគូសអគារកោងក្នុង SketchUp 60s`\n\n"
-            "• **វីដេអូមធ្យម (2 - 3 នាទី Explainer)** ៖\n"
-            "  `/script តិចនិកប្រើ SketchUp ឱ្យលឿនជាងមុន 3mn`\n\n"
-            "• **វីដេអូវែង (5 - 10 នាទី YouTube / Tutorial)** ៖\n"
-            "  `/script មេរៀនពេញលេញអំពីកម្មវិធី SketchUp 5mn`\n"
-            "━━━━━━━━━━━━━━━━━━━━━"
+        guide = (
+            "⚠️ **សូមបញ្ជាក់ប្រធានបទដែលអ្នកចង់បង្កើត Script!**\n\n"
+            "👉 **របៀបវាយ៖** `/gen [ប្រធានបទ]`\n"
+            "   *ឧទាហរណ៍៖* `/gen វិធីធ្វើស៊ុបមាន់ពិសេសសម្រាប់ហាង` ឬ `/gen គន្លឹះជ្រើសរើសសាច់ស្រស់`"
         )
-        await safe_reply(update.message, guide_text)
+        await safe_reply(update.message, guide)
         return
 
     full_text = " ".join(context.args)
-    duration = "60s (Short Video)"
+    status_msg = await update.message.reply_text(f"⏳ កំពុងតែង Script 3WHs ប្រវែង [{default_dur}] ជូនអ្នក...")
 
-    # Check for duration keywords at the end or within text
-    lower_text = full_text.lower()
-    if any(k in lower_text for k in ["10mn", "10 នាទី", "10 min", "10 mins", "10 minute", "10 minutes"]):
-        duration = "10 នាទី (Long YouTube Video)"
-    elif any(k in lower_text for k in ["5mn", "5 នាទី", "5 min", "5 mins", "5 minute", "5 minutes"]):
-        duration = "5 នាទី (Long Video)"
-    elif any(k in lower_text for k in ["3mn", "3 នាទី", "3 min", "3 mins", "3 minute", "3 minutes"]):
-        duration = "3 នាទី (Medium Explainer Video)"
-    elif any(k in lower_text for k in ["2mn", "2 នាទី", "2 min", "2 mins", "2 minute", "2 minutes"]):
-        duration = "2 នាទី (Medium Video)"
-    elif any(k in lower_text for k in ["30s", "30 វិនាទី", "45s", "60s", "1mn", "1 នាទី", "ខ្លី"]):
-        duration = "30s - 60s (Short Video - TikTok/Reels)"
-
-    status_msg = await update.message.reply_text(f"⏳ កំពុងរៀបចំ Script 3WHs ប្រវែង [{duration}] ជូនអ្នក...")
-
-    response = await ai_service.generate_script(full_text, duration)
+    response = await ai_service.generate_script(full_text, default_dur)
     await safe_edit(status_msg, response)
 
+async def now_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    cfg = get_user_config(chat_id)
+    niche = cfg.get("niche", DEFAULT_NICHE)
+    duration = cfg.get("duration", DEFAULT_DURATION)
+
+    if update.message:
+        status_msg = await update.message.reply_text(f"🚀 កំពុងបង្កើត Script 3WHs ថ្ងៃនេះសម្រាប់ [{niche}] ប្រវែង [{duration}]...")
+    else:
+        status_msg = await update.callback_query.message.reply_text(f"🚀 កំពុងបង្កើត Script 3WHs ថ្ងៃនេះសម្រាប់ [{niche}] ប្រវែង [{duration}]...")
+
+    prompt_topic = f"ប្រធានបទវីដេអូទាក់ទាញ និងពេញនិយមសម្រាប់វិស័យ៖ {niche}"
+    response = await ai_service.generate_script(prompt_topic, duration)
+    await safe_edit(status_msg, response)
+
+async def setniche_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if not context.args:
+        guide = (
+            "🎯 **របៀបប្តូរវិស័យផ្តោតចម្បង (Niche)**\n\n"
+            "👉 វាយពាក្យ៖ `/setniche [ឈ្មោះវិស័យរបស់អ្នក]`\n"
+            "   *ឧទាហរណ៍៖* `/setniche សាលាបង្រៀនធ្វើម្ហូបហាក់ហេង`\n"
+            "   *ឧទាហរណ៍៖* `/setniche អចលនទ្រព្យ និងសំណង់`\n"
+            "   *ឧទាហរណ៍៖* `/setniche ស្ថាបត្យកម្ម SketchUp`"
+        )
+        await safe_reply(update.message, guide)
+        return
+
+    new_niche = " ".join(context.args)
+    update_user_config(chat_id, "niche", new_niche)
+    msg = (
+        f"✅ **បានផ្លាស់ប្តូរវិស័យជោគជ័យ!**\n\n"
+        f"• 🎯 វិស័យថ្មីរបស់អ្នក៖ **{new_niche}**\n\n"
+        f"👉 វាយ `/now` ដើម្បីបង្កើត Script សម្រាប់វិស័យនេះភ្លាមៗ!"
+    )
+    await safe_reply(update.message, msg)
+
+async def setduration_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if not context.args:
+        guide = (
+            "⏱️ **របៀបប្តូររយៈពេលវីដេអូ (Video Duration)**\n\n"
+            "👉 វាយពាក្យ៖ `/setduration [រយៈពេល]`\n"
+            "   *ឧទាហរណ៍៖* `/setduration 60 វិនាទី`\n"
+            "   *ឧទាហរណ៍៖* `/setduration 2 នាទី`\n"
+            "   *ឧទាហរណ៍៖* `/setduration 3 នាទី`\n"
+            "   *ឧទាហរណ៍៖* `/setduration 5 នាទី`"
+        )
+        await safe_reply(update.message, guide)
+        return
+
+    new_duration = " ".join(context.args)
+    update_user_config(chat_id, "duration", new_duration)
+    msg = (
+        f"✅ **បានផ្លាស់ប្តូររយៈពេលវីដេអូជោគជ័យ!**\n\n"
+        f"• ⏱️ រយៈពេលវីដេអូថ្មី៖ **{new_duration}**\n\n"
+        f"👉 វាយ `/now` ឬ `/gen [ប្រធានបទ]` ដើម្បីចាប់ផ្តើម!"
+    )
+    await safe_reply(update.message, msg)
+
 async def ideas_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    category = " ".join(context.args) if context.args else "ទូទៅ / ស្ថាបត្យកម្ម / អាជីវកម្ម / បច្ចេកវិទ្យា / ការអភិវឌ្ឍខ្លួន"
+    chat_id = update.effective_chat.id
+    cfg = get_user_config(chat_id)
+    niche = " ".join(context.args) if context.args else cfg.get("niche", DEFAULT_NICHE)
     
     if update.message:
-        status_msg = await update.message.reply_text("💡 កំពុងស្វែងរកគំនិត 3WHs ល្អៗសម្រាប់ថ្ងៃនេះ...")
+        status_msg = await update.message.reply_text(f"💡 កំពុងស្វែងរកគំនិត 3WHs សម្រាប់វិស័យ [{niche}]...")
     else:
-        status_msg = await update.callback_query.message.reply_text("💡 កំពុងស្វែងរកគំនិត 3WHs ល្អៗសម្រាប់ថ្ងៃនេះ...")
+        status_msg = await update.callback_query.message.reply_text(f"💡 កំពុងស្វែងរកគំនិត 3WHs សម្រាប់វិស័យ [{niche}]...")
 
-    response = await ai_service.generate_daily_ideas(category)
+    response = await ai_service.generate_daily_ideas(niche)
     await safe_edit(status_msg, response)
 
 async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     subscribers.add(chat_id)
     save_subscribers(subscribers)
+    cfg = get_user_config(chat_id)
+    daily_time = cfg.get("daily_time", DEFAULT_DAILY_TIME)
     msg = (
         "✅ **បានចុះឈ្មោះជោគជ័យ!** 🎉\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "ខ្ញុំនឹងផ្ញើគំនិតមាតិកា និង Script 3WHs ថ្មីៗមកកាន់អ្នកជារៀងរាល់ព្រឹកនៅម៉ោង **08:00 AM**។ 🚀"
+        f"ខ្ញុំនឹងផ្ញើគំនិតមាតិកា និង Script 3WHs ថ្មីៗមកកាន់អ្នកជារៀងរាល់ព្រឹកនៅម៉ោង **{daily_time}**។ 🚀"
     )
     if update.message:
         await safe_reply(update.message, msg)
@@ -285,61 +355,78 @@ async def unsubscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await safe_reply(update.callback_query.message, msg)
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    is_gemini_ok = ai_service.is_configured()
     chat_id = update.effective_chat.id
+    cfg = get_user_config(chat_id)
+    is_gemini_ok = ai_service.is_configured()
     is_subbed = chat_id in subscribers
-    daily_time = os.getenv("DAILY_TIME", "08:00")
-    timezone = os.getenv("TIMEZONE", "Asia/Phnom_Penh")
 
     status_text = (
-        "📊 **ស្ថានភាពប្រព័ន្ធ (System Status)**\n"
+        "📊 **ស្ថានភាពប្រព័ន្ធរបស់អ្នក (System Status)**\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        f"• AI Service (Gemini): {'🟢 ដំណើរការល្អ' if is_gemini_ok else '🔴 មិនទាន់ដាក់ API Key'}\n"
-        f"• Daily Schedule: ⏰ ម៉ោង {daily_time} ({timezone})\n"
-        f"• ចំនួនអ្នក Subscribe សរុប: {len(subscribers)} នាក់\n"
-        f"• គណនីរបស់អ្នក: {'✅ បាន Subscribe រួចរាល់' if is_subbed else '❌ មិនទាន់បាន Subscribe'}\n"
+        f"• 🎯 វិស័យរបស់អ្នក: **{cfg.get('niche')}**\n"
+        f"• ⏱️ រយៈពេលវីដេអូ: **{cfg.get('duration')}**\n"
+        f"• ⏰ ម៉ោងផ្ញើស្វ័យប្រវត្ត: **ម៉ោង {cfg.get('daily_time')}**\n"
+        f"• 🔔 ស្ថានភាព Subscribe: {'✅ បានបើក' if is_subbed else '❌ មិនទាន់បើក'}\n"
+        f"• 🧠 AI Engine: {'🟢 ដំណើរការល្អ' if is_gemini_ok else '🔴 មិនទាន់ដាក់ Key'}\n"
         "━━━━━━━━━━━━━━━━━━━━━"
     )
     await safe_reply(update.message, status_text)
 
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "📖 **បញ្ជីពាក្យបញ្ជាទាំងអស់ (All Commands)**\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🔹 `/start` ៖ បើកផ្ទាំងដើម និងមើលការកំណត់\n"
+        "🔹 `/now` ៖ បង្កើត Script ថ្ងៃនេះភ្លាមៗតាមវិស័យរបស់អ្នក\n"
+        "🔹 `/gen <ប្រធានបទ>` ៖ បង្កើត Script តាមប្រធានបទជាក់លាក់\n"
+        "🔹 `/setniche <ឈ្មោះវិស័យ>` ៖ ប្តូរវិស័យផ្តោតចម្បងរបស់អ្នក\n"
+        "🔹 `/setduration <រយៈពេល>` ៖ ប្តូររយៈពេលវីដេអូ (60s, 2m, 3m, 5m)\n"
+        "🔹 `/ideas` ៖ សុំគំនិតប្រធានបទថ្មីៗថ្ងៃនេះ\n"
+        "🔹 `/subscribe` ៖ បើកការផ្ញើស្វ័យប្រវត្តរាល់ព្រឹក\n"
+        "🔹 `/unsubscribe` ៖ ផ្អាកការផ្ញើប្រចាំថ្ងៃ\n"
+        "🔹 `/status` ៖ ពិនិត្យមើលស្ថានភាពនៃការកំណត់របស់អ្នក\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "💡 *អ្នកក៏អាចវាយសារជជែកសួរនាំជាភាសាខ្មែរជាមួយខ្ញុំដោយផ្ទាល់បានគ្រប់ពេល!*"
+    )
+    if update.message:
+        await safe_reply(update.message, help_text)
+    elif update.callback_query:
+        await safe_reply(update.callback_query.message, help_text)
+
 async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
+    chat_id = update.effective_chat.id
 
-    if data == "btn_ideas":
+    if data == "btn_now":
+        await query.answer()
+        await now_command(update, context)
+    elif data == "btn_ideas":
         await query.answer()
         await ideas_command(update, context)
-    elif data == "btn_how_to_script":
+    elif data == "btn_guide_niche":
         await query.answer()
         guide = (
-            "🎬 **របៀបបង្កើត Script វីដេអូ 3WHs**\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "គ្រាន់តែវាយពាក្យ `/script` បន្ទាប់មកដាក់ប្រធានបទ និងប្រវែងនាទី។\n\n"
-            "💡 **ឧទាហរណ៍ជាក់ស្តែង៖**\n"
-            "• `/script របៀបគូសអគារកោងក្នុង SketchUp 60s`\n"
-            "• `/script ទម្លាប់ ៥ យ៉ាងជួយឱ្យជោគជ័យ 3mn`\n"
-            "• `/script ហេតុអ្វីត្រូវបង្កើត Personal Brand? 60s`\n"
-            "━━━━━━━━━━━━━━━━━━━━━"
+            "🎯 **របៀបប្តូរវិស័យផ្តោតចម្បង៖**\n\n"
+            "សូមវាយពាក្យ៖ `/setniche [ឈ្មោះវិស័យ]`\n\n"
+            "ឧទាហរណ៍៖\n"
+            "`/setniche សាលាបង្រៀនធ្វើម្ហូបហាក់ហេង`\n"
+            "`/setniche ហាងកាហ្វេ និងភេសជ្ជៈ`\n"
+            "`/setniche ស្ថាបត្យកម្ម SketchUp`"
         )
         await safe_reply(query.message, guide)
-    elif data == "btn_duration_guide":
+    elif data == "btn_guide_duration":
         await query.answer()
-        duration_info = (
-            "⏱️ **ការកំណត់ប្រវែងនាទីនៃវីដេអូ**\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "អ្នកអាចកំណត់ប្រវែងវីដេអូបានតាមតម្រូវការ៖\n\n"
-            "1. ⚡ **វីដេអូខ្លី (30s - 60s)** ៖\n"
-            "   ស័ក្តិសមសម្រាប់ TikTok / Reels / Shorts\n"
-            "   👉 ឧទាហរណ៍៖ `/script ប្រធានបទ 60s`\n\n"
-            "2. 📽️ **វីដេអូមធ្យម (2 - 3 នាទី)** ៖\n"
-            "   ស័ក្តិសមសម្រាប់ Facebook Explainer\n"
-            "   👉 ឧទាហរណ៍៖ `/script ប្រធានបទ 3mn`\n\n"
-            "3. 🎥 **វីដេអូវែង (5 - 10 នាទី)** ៖\n"
-            "   ស័ក្តិសមសម្រាប់ YouTube Tutorial / Masterclass\n"
-            "   👉 ឧទាហរណ៍៖ `/script ប្រធានបទ 5mn`\n"
-            "━━━━━━━━━━━━━━━━━━━━━"
+        guide = (
+            "⏱️ **របៀបប្តូររយៈពេលវីដេអូ៖**\n\n"
+            "សូមវាយពាក្យ៖ `/setduration [រយៈពេល]`\n\n"
+            "ឧទាហរណ៍៖\n"
+            "`/setduration 60 វិនាទី`\n"
+            "`/setduration 2 នាទី`\n"
+            "`/setduration 3 នាទី`\n"
+            "`/setduration 5 នាទី`"
         )
-        await safe_reply(query.message, duration_info)
+        await safe_reply(query.message, guide)
     elif data == "btn_subscribe":
         await subscribe_command(update, context)
     elif data == "btn_unsubscribe":
@@ -356,7 +443,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Send typing status
     await update.message.chat.send_action("typing")
 
-    # If message looks like a direct topic request, provide full script or chat response
     response = await ai_service.chat(user_text)
     await safe_reply(update.message, response)
 
@@ -367,15 +453,17 @@ async def send_daily_content(context: ContextTypes.DEFAULT_TYPE):
         logger.info("No subscribers registered for daily broadcast.")
         return
 
-    content = await ai_service.generate_daily_ideas()
-    broadcast_msg = (
-        "☀️ **អរុណសួស្តី! នេះជាមាតិកាវីដេអូ 3WHs សម្រាប់ថ្ងៃនេះ៖**\n\n"
-        f"{content}\n\n"
-        "💡 *ចង់បាន Script លម្អិតសម្រាប់ប្រធានបទណាមួយខាងលើ? គ្រាន់តែវាយ `/script <ឈ្មោះប្រធានបទ>` មកកាន់ខ្ញុំ!*"
-    )
-
     for chat_id in list(subscribers):
         try:
+            cfg = get_user_config(chat_id)
+            niche = cfg.get("niche", DEFAULT_NICHE)
+            duration = cfg.get("duration", DEFAULT_DURATION)
+            content = await ai_service.generate_daily_ideas(niche)
+            broadcast_msg = (
+                f"☀️ **អរុណសួស្តី! នេះជាមាតិកាវីដេអូ 3WHs សម្រាប់វិស័យ [{niche}] ថ្ងៃនេះ៖**\n\n"
+                f"{content}\n\n"
+                "💡 *ចង់បាន Script ពេញលេញ? គ្រាន់តែវាយ `/gen <ឈ្មោះប្រធានបទ>` មកកាន់ខ្ញុំ!*"
+            )
             await context.bot.send_message(
                 chat_id=chat_id,
                 text=broadcast_msg,
@@ -400,7 +488,11 @@ def main():
     # Register Command Handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("script", script_command))
+    application.add_handler(CommandHandler("gen", gen_command))
+    application.add_handler(CommandHandler("script", gen_command))
+    application.add_handler(CommandHandler("now", now_command))
+    application.add_handler(CommandHandler("setniche", setniche_command))
+    application.add_handler(CommandHandler("setduration", setduration_command))
     application.add_handler(CommandHandler("ideas", ideas_command))
     application.add_handler(CommandHandler("subscribe", subscribe_command))
     application.add_handler(CommandHandler("unsubscribe", unsubscribe_command))
