@@ -134,18 +134,18 @@ async def safe_edit(status_msg, text: str):
 def get_main_keyboard():
     keyboard = [
         [
-            InlineKeyboardButton("🎬 របៀបបង្កើត Script", callback_data="btn_how_to_script"),
+            InlineKeyboardButton("🎬 របៀបសរសេរ Script", callback_data="btn_how_to_script"),
             InlineKeyboardButton("💡 គំនិតប្រធានបទថ្ងៃនេះ", callback_data="btn_ideas")
         ],
         [
             InlineKeyboardButton("⏱️ កំណត់ប្រវែងនាទី (30s / 3mn / 5mn)", callback_data="btn_duration_guide")
         ],
         [
-            InlineKeyboardButton("🔔 បើកទទួលរាល់ព្រឹក (08:00 AM)", callback_data="btn_subscribe"),
-            InlineKeyboardButton("🔕 បិទការផ្ញើប្រចាំថ្ងៃ", callback_data="btn_unsubscribe")
+            InlineKeyboardButton("🔔 ទទួលសាររាល់ព្រឹក (08:00 AM)", callback_data="btn_subscribe"),
+            InlineKeyboardButton("🔕 ផ្អាកការផ្ញើ", callback_data="btn_unsubscribe")
         ],
         [
-            InlineKeyboardButton("📖 ការណែនាំ និងពាក្យបញ្ជា (Help)", callback_data="btn_help")
+            InlineKeyboardButton("📖 ការណែនាំលម្អិត (Help)", callback_data="btn_help")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -153,23 +153,22 @@ def get_main_keyboard():
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name if update.effective_user else "អ្នកបង្កើតមាតិកា"
     welcome_text = (
-        f"👋 **សួស្តី {user_name}! ខ្ញុំជាជំនួយការ 3WHs Video AI Agent** 🎬✨\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        "ខ្ញុំនៅទីនេះដើម្បីជួយអ្នកផលិត **Script វីដេអូ** ខ្លី (TikTok / Reels / Shorts) និងវីដេអូវែង (YouTube / Facebook) "
-        "ឱ្យមានភាពទាក់ទាញ ខ្លឹម និងងាយស្រួលថត តាមរូបមន្ត **3WHs** ៖\n\n"
-        "🎯 **1. Hook** ៖ ៣ វិនាទីដំបូងទាក់ទាញខ្លាំង\n"
+        f"👋 **សួស្តីបង {user_name}! ខ្ញុំជា 3WHs Video AI Assistant** 🎬✨\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "ខ្ញុំជាជំនួយការជួយបងផលិត **Script វីដេអូខ្លី និងវែង** ឱ្យមានភាពទាក់ទាញ ខ្លឹម និងងាយស្រួលថត តាមរូបមន្ត **3WHs** ៖\n\n"
+        "🎯 **1. Hook** ៖ ពាក្យទាក់ទាញខ្លាំងក្នុង ៣ វិនាទីដំបូង\n"
         "📌 **2. What** ៖ បញ្ជាក់ប្រធានបទ ឬបញ្ហាឱ្យចំៗ\n"
-        "🔥 **3. Why** ៖ ហេតុអ្វីបានជាត្រូវដឹង និងផលចំណេញ\n"
+        "🔥 **3. Why** ៖ ហេតុអ្វីត្រូវដឹង & ផលចំណេញដែលទទួលបាន\n"
         "👥 **4. Who** ៖ អ្នកណាខ្លះដែលត្រូវដឹង (Target Audience)\n"
-        "🛠️ **5. How** ៖ ដំណោះស្រាយ ឬជំហានអនុវត្តជាក់ស្តែង\n"
-        "📣 **6. CTA** ៖ ពាក្យបិទបញ្ចប់វីដេអូ\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "🚀 **របៀបប្រើប្រាស់រហ័ស៖**\n"
-        "👉 **បង្កើត Script ភ្លាមៗ** ៖ វាយ `/script <ប្រធានបទ> <ប្រវែង>`\n"
-        "*(ឧទាហរណ៍៖ `/script របៀបគូរអគារកោងក្នុង SketchUp 60s`)*\n\n"
-        "👉 **សុំគំនិតប្រធានបទថ្ងៃនេះ** ៖ វាយ `/ideas`\n"
-        "👉 **ជជែកសួរនាំ** ៖ វាយសារធម្មតាជាភាសាខ្មែរមកកាន់ខ្ញុំបានគ្រប់ពេល!\n\n"
-        "👇 *សូមចុចប៊ូតុងខាងក្រោមដើម្បីជ្រើសរើសមុខងាររហ័ស៖*"
+        "🛠️ **5. How** ៖ ដំណោះស្រាយ និងជំហានអនុវត្តជាក់ស្តែង\n"
+        "📣 **6. CTA** ៖ ពាក្យបិទបញ្ចប់វីដេអូជំរុញសកម្មភាព\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "⚡ **របៀបប្រើប្រាស់រហ័ស៖**\n"
+        "1️⃣ **បង្កើត Script ភ្លាមៗ** ៖ វាយ `/script <ប្រធានបទ> <ប្រវែង>`\n"
+        "   👉 *ឧទាហរណ៍៖* `/script របៀបគូសអគារកោងក្នុង SketchUp 60s`\n\n"
+        "2️⃣ **សុំគំនិតប្រធានបទថ្ងៃនេះ** ៖ វាយ `/ideas`\n"
+        "3️⃣ **ជជែកពិគ្រោះយោបល់** ៖ ផ្ញើសារធម្មតាមកកាន់ខ្ញុំបានគ្រប់ពេល!\n\n"
+        "👇 *សូមជ្រើសរើសមុខងារដែលបងចង់ប្រើខាងក្រោម៖*"
     )
     if update.message:
         await update.message.reply_text(
