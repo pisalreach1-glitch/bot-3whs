@@ -1,5 +1,6 @@
 import os
 import logging
+from dotenv import load_dotenv
 from prompts import (
     SYSTEM_INSTRUCTION,
     get_script_generation_prompt,
@@ -7,6 +8,7 @@ from prompts import (
     get_chat_prompt,
 )
 
+load_dotenv()
 logger = logging.getLogger(__name__)
 
 class AIService:
@@ -60,9 +62,9 @@ class AIService:
 
         models_to_try = [
             "gemini-2.5-flash",
-            "gemini-2.5-pro",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash-latest",
+            "gemini-flash-latest",
+            "gemini-3.7-flash",
+            "gemini-3.5-flash",
         ]
 
         last_error = None

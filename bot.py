@@ -134,15 +134,18 @@ async def safe_edit(status_msg, text: str):
 def get_main_keyboard():
     keyboard = [
         [
-            InlineKeyboardButton("💡 គំនិតប្រធានបទថ្ងៃនេះ", callback_data="btn_ideas"),
-            InlineKeyboardButton("🎬 របៀបបង្កើត Script", callback_data="btn_how_to_script")
+            InlineKeyboardButton("🎬 របៀបបង្កើត Script", callback_data="btn_how_to_script"),
+            InlineKeyboardButton("💡 គំនិតប្រធានបទថ្ងៃនេះ", callback_data="btn_ideas")
         ],
         [
-            InlineKeyboardButton("🔔 Subscribe ទទួលរាល់ព្រឹក", callback_data="btn_subscribe"),
+            InlineKeyboardButton("⏱️ កំណត់ប្រវែងនាទី (30s / 3mn / 5mn)", callback_data="btn_duration_guide")
+        ],
+        [
+            InlineKeyboardButton("🔔 បើកទទួលរាល់ព្រឹក (08:00 AM)", callback_data="btn_subscribe"),
             InlineKeyboardButton("🔕 បិទការផ្ញើប្រចាំថ្ងៃ", callback_data="btn_unsubscribe")
         ],
         [
-            InlineKeyboardButton("ℹ️ ជំនួយ & ពាក្យបញ្ជា", callback_data="btn_help")
+            InlineKeyboardButton("📖 ការណែនាំ និងពាក្យបញ្ជា (Help)", callback_data="btn_help")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -150,49 +153,72 @@ def get_main_keyboard():
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name if update.effective_user else "អ្នកបង្កើតមាតិកា"
     welcome_text = (
-        f"👋 **សួស្តី {user_name}! ខ្ញុំជា 3WHs Video Content Agent** 🎬✨\n\n"
-        "ខ្ញុំនៅទីនេះដើម្បីជួយអ្នកផលិត Script វីដេអូខ្លី (TikTok / Reels / Shorts) "
-        "និងវីដេអូវែង តាមរូបមន្ត **3WHs (What, Why, Who, How)** ឱ្យទាក់ទាញ និងងាយស្រួលធ្វើតាមបំផុត។\n\n"
-        "📌 **របៀបប្រើប្រាស់រហ័ស៖**\n"
-        "• វាយ `/script <ប្រធានបទ>` (ឧ. `/script របៀបគ្រប់គ្រងលុយ`)\n"
-        "• វាយ `/ideas` ដើម្បីសុំគំនិតប្រធានបទថ្មីៗថ្ងៃនេះ\n"
-        "• ឬគ្រាន់តែ**ផ្ញើសារធម្មតា**មកខ្ញុំដើម្បីជជែក ឬពិភាក្សាគំនិតមាតិកា!\n\n"
-        "👇 សូមជ្រើសរើសជម្រើសខាងក្រោម៖"
+        f"👋 **សួស្តី {user_name}! ខ្ញុំជាជំនួយការ 3WHs Video AI Agent** 🎬✨\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "ខ្ញុំនៅទីនេះដើម្បីជួយអ្នកផលិត **Script វីដេអូ** ខ្លី (TikTok / Reels / Shorts) និងវីដេអូវែង (YouTube / Facebook) "
+        "ឱ្យមានភាពទាក់ទាញ ខ្លឹម និងងាយស្រួលថត តាមរូបមន្ត **3WHs** ៖\n\n"
+        "🎯 **1. Hook** ៖ ៣ វិនាទីដំបូងទាក់ទាញខ្លាំង\n"
+        "📌 **2. What** ៖ បញ្ជាក់ប្រធានបទ ឬបញ្ហាឱ្យចំៗ\n"
+        "🔥 **3. Why** ៖ ហេតុអ្វីបានជាត្រូវដឹង និងផលចំណេញ\n"
+        "👥 **4. Who** ៖ អ្នកណាខ្លះដែលត្រូវដឹង (Target Audience)\n"
+        "🛠️ **5. How** ៖ ដំណោះស្រាយ ឬជំហានអនុវត្តជាក់ស្តែង\n"
+        "📣 **6. CTA** ៖ ពាក្យបិទបញ្ចប់វីដេអូ\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🚀 **របៀបប្រើប្រាស់រហ័ស៖**\n"
+        "👉 **បង្កើត Script ភ្លាមៗ** ៖ វាយ `/script <ប្រធានបទ> <ប្រវែង>`\n"
+        "*(ឧទាហរណ៍៖ `/script របៀបគូរអគារកោងក្នុង SketchUp 60s`)*\n\n"
+        "👉 **សុំគំនិតប្រធានបទថ្ងៃនេះ** ៖ វាយ `/ideas`\n"
+        "👉 **ជជែកសួរនាំ** ៖ វាយសារធម្មតាជាភាសាខ្មែរមកកាន់ខ្ញុំបានគ្រប់ពេល!\n\n"
+        "👇 *សូមចុចប៊ូតុងខាងក្រោមដើម្បីជ្រើសរើសមុខងាររហ័ស៖*"
     )
-    await update.message.reply_text(
-        welcome_text,
-        parse_mode="Markdown",
-        reply_markup=get_main_keyboard()
-    )
+    if update.message:
+        await update.message.reply_text(
+            welcome_text,
+            parse_mode="Markdown",
+            reply_markup=get_main_keyboard()
+        )
+    elif update.callback_query:
+        await update.callback_query.message.reply_text(
+            welcome_text,
+            parse_mode="Markdown",
+            reply_markup=get_main_keyboard()
+        )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
-        "📖 **បញ្ជីពាក្យបញ្ជា (Commands List)**\n\n"
-        "1. `/start` - បើកផ្ទាំងដើម\n"
-        "2. `/script <ប្រធានបទ>` - បង្កើត Script វីដេអូ 3WHs ពេញលេញភ្លាមៗ\n"
-        "3. `/ideas` - ទទួលបានគំនិតប្រធានបទ 3WHs កំពុងពេញនិយម\n"
-        "4. `/subscribe` - ចុះឈ្មោះទទួល Script & គំនិតមាតិកាជារៀងរាល់ព្រឹក\n"
-        "5. `/unsubscribe` - ឈប់ទទួលសារប្រចាំថ្ងៃស្វ័យប្រវត្តិ\n"
-        "6. `/status` - ពិនិត្យមើលស្ថានភាពនៃការតភ្ជាប់ Bot\n\n"
-        "💡 *អ្នកក៏អាចវាយសារជជែកជាភាសាខ្មែរជាមួយខ្ញុំដោយផ្ទាល់បានគ្រប់ពេល!*"
+        "📖 **បញ្ជីពាក្យបញ្ជា និងការណែនាំ (Commands Guide)**\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🔹 `/start` ៖ បើកផ្ទាំងដើម\n\n"
+        "🔹 `/script <ប្រធានបទ> <ប្រវែង>` ៖ បង្កើត Script វីដេអូ 3WHs ពេញលេញ\n"
+        "   • វីដេអូខ្លី 60 វិនាទី ៖ `/script របៀបគ្រប់គ្រងលុយ 60s`\n"
+        "   • វីដេអូមធ្យម 3 នាទី ៖ `/script យុទ្ធសាស្ត្រលក់អនឡាញ 3mn`\n"
+        "   • វីដេអូវែង 5-10 នាទី ៖ `/script មូលដ្ឋានគ្រឹះក្នុងការវិនិយោគ 5mn`\n\n"
+        "🔹 `/ideas [វិស័យ]` ៖ ទទួលបានគំនិតប្រធានបទកំពុងពេញនិយមថ្ងៃនេះ\n\n"
+        "🔹 `/subscribe` ៖ ចុះឈ្មោះទទួល Script និងគំនិតមាតិកាស្វ័យប្រវត្តិរាល់ព្រឹក (08:00 AM)\n\n"
+        "🔹 `/unsubscribe` ៖ ផ្អាកការទទួលសារប្រចាំថ្ងៃ\n\n"
+        "🔹 `/status` ៖ ពិនិត្យមើលស្ថានភាពនៃការតភ្ជាប់ Bot\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "💡 *អ្នកក៏អាចវាយសារជជែកពិគ្រោះយោបល់ជាភាសាខ្មែរជាមួយខ្ញុំដោយផ្ទាល់បានគ្រប់ពេល!*"
     )
     if update.message:
-        await update.message.reply_text(help_text, parse_mode="Markdown")
+        await safe_reply(update.message, help_text)
     elif update.callback_query:
-        await update.callback_query.message.reply_text(help_text, parse_mode="Markdown")
+        await safe_reply(update.callback_query.message, help_text)
 
 async def script_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         guide_text = (
-            "⚠️ **សូមបញ្ជាក់ប្រធានបទ និងប្រវែងវីដេអូដែលអ្នកចង់ធ្វើ!**\n\n"
-            "📌 **របៀបសរសេរ៖**\n"
-            "• វីដេអូខ្លី (Shorts/Reels 60s): `/script <ប្រធានបទ> 60s`\n"
-            "• វីដេអូមធ្យម (2-3 នាទី): `/script <ប្រធានបទ> 3mn`\n"
-            "• វីដេអូវែង (5-10 នាទី): `/script <ប្រធានបទ> 5mn`\n\n"
-            "💡 **ឧទាហរណ៍៖**\n"
-            "`/script របៀបភ្ញាក់ពីព្រលឹមដោយមិនងងុយ 60s`\n"
-            "`/script យុទ្ធសាស្ត្រលក់អនឡាញ 3mn`\n"
-            "`/script មូលដ្ឋានគ្រឹះក្នុងការវិនិយោគ 10mn`"
+            "🎬 **របៀបបង្កើត Script វីដេអូ 3WHs**\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "សូមវាយពាក្យ `/script` បន្ទាប់មកដាក់ **ឈ្មោះប្រធានបទ** និង **ប្រវែងនាទី** ដែលអ្នកចង់បាន។\n\n"
+            "📌 **គំរូសរសេរងាយៗ៖**\n"
+            "• **វីដេអូខ្លី (30s - 60s TikTok / Reels)** ៖\n"
+            "  `/script របៀបគូសអគារកោងក្នុង SketchUp 60s`\n\n"
+            "• **វីដេអូមធ្យម (2 - 3 នាទី Explainer)** ៖\n"
+            "  `/script តិចនិកប្រើ SketchUp ឱ្យលឿនជាងមុន 3mn`\n\n"
+            "• **វីដេអូវែង (5 - 10 នាទី YouTube / Tutorial)** ៖\n"
+            "  `/script មេរៀនពេញលេញអំពីកម្មវិធី SketchUp 5mn`\n"
+            "━━━━━━━━━━━━━━━━━━━━━"
         )
         await safe_reply(update.message, guide_text)
         return
@@ -219,7 +245,7 @@ async def script_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await safe_edit(status_msg, response)
 
 async def ideas_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    category = " ".join(context.args) if context.args else "ទូទៅ / អាជីវកម្ម / បច្ចេកវិទ្យា / ការអភិវឌ្ឍខ្លួន"
+    category = " ".join(context.args) if context.args else "ទូទៅ / ស្ថាបត្យកម្ម / អាជីវកម្ម / បច្ចេកវិទ្យា / ការអភិវឌ្ឍខ្លួន"
     
     if update.message:
         status_msg = await update.message.reply_text("💡 កំពុងស្វែងរកគំនិត 3WHs ល្អៗសម្រាប់ថ្ងៃនេះ...")
@@ -234,8 +260,9 @@ async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subscribers.add(chat_id)
     save_subscribers(subscribers)
     msg = (
-        "✅ **បានចុះឈ្មោះជោគជ័យ!**\n\n"
-        "ខ្ញុំនឹងផ្ញើគំនិតមាតិកា និង Script 3WHs មកកាន់អ្នកជារៀងរាល់ថ្ងៃនៅម៉ោងកំណត់។ 🚀"
+        "✅ **បានចុះឈ្មោះជោគជ័យ!** 🎉\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "ខ្ញុំនឹងផ្ញើគំនិតមាតិកា និង Script 3WHs ថ្មីៗមកកាន់អ្នកជារៀងរាល់ព្រឹកនៅម៉ោង **08:00 AM**។ 🚀"
     )
     if update.message:
         await safe_reply(update.message, msg)
@@ -248,7 +275,7 @@ async def unsubscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if chat_id in subscribers:
         subscribers.remove(chat_id)
         save_subscribers(subscribers)
-        msg = "🔕 អ្នកបានផ្អាកការទទួលមាតិកាប្រចាំថ្ងៃដោយជោគជ័យ។"
+        msg = "🔕 **អ្នកបានផ្អាកការទទួលមាតិកាប្រចាំថ្ងៃដោយជោគជ័យ។**"
     else:
         msg = "ℹ️ អ្នកមិនទាន់បាន Subscribe នៅឡើយទេ។"
 
@@ -266,11 +293,13 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     timezone = os.getenv("TIMEZONE", "Asia/Phnom_Penh")
 
     status_text = (
-        "📊 **ស្ថានភាព Bot (System Status)**\n\n"
-        f"• AI Service (Gemini): {'🟢 ដំណើរការ' if is_gemini_ok else '🔴 មិនទាន់ដាក់ API Key'}\n"
+        "📊 **ស្ថានភាពប្រព័ន្ធ (System Status)**\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"• AI Service (Gemini): {'🟢 ដំណើរការល្អ' if is_gemini_ok else '🔴 មិនទាន់ដាក់ API Key'}\n"
         f"• Daily Schedule: ⏰ ម៉ោង {daily_time} ({timezone})\n"
         f"• ចំនួនអ្នក Subscribe សរុប: {len(subscribers)} នាក់\n"
         f"• គណនីរបស់អ្នក: {'✅ បាន Subscribe រួចរាល់' if is_subbed else '❌ មិនទាន់បាន Subscribe'}\n"
+        "━━━━━━━━━━━━━━━━━━━━━"
     )
     await safe_reply(update.message, status_text)
 
@@ -284,14 +313,34 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     elif data == "btn_how_to_script":
         await query.answer()
         guide = (
-            "🎬 **របៀបបង្កើត Script វីដេអូ 3WHs៖**\n\n"
-            "គ្រាន់តែវាយពាក្យ `/script` បន្ទាប់មកដាក់ប្រធានបទរបស់អ្នក។\n\n"
-            "ឧទាហរណ៍៖\n"
-            "`/script ទម្លាប់ ៥ យ៉ាងជួយឱ្យជោគជ័យ`\n"
-            "`/script ហេតុអ្វីបានជាត្រូវបង្កើត Personal Brand?`\n"
-            "`/script វិធីសាស្រ្តសន្សំលុយសម្រាប់យុវជន`"
+            "🎬 **របៀបបង្កើត Script វីដេអូ 3WHs**\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "គ្រាន់តែវាយពាក្យ `/script` បន្ទាប់មកដាក់ប្រធានបទ និងប្រវែងនាទី។\n\n"
+            "💡 **ឧទាហរណ៍ជាក់ស្តែង៖**\n"
+            "• `/script របៀបគូសអគារកោងក្នុង SketchUp 60s`\n"
+            "• `/script ទម្លាប់ ៥ យ៉ាងជួយឱ្យជោគជ័យ 3mn`\n"
+            "• `/script ហេតុអ្វីត្រូវបង្កើត Personal Brand? 60s`\n"
+            "━━━━━━━━━━━━━━━━━━━━━"
         )
         await safe_reply(query.message, guide)
+    elif data == "btn_duration_guide":
+        await query.answer()
+        duration_info = (
+            "⏱️ **ការកំណត់ប្រវែងនាទីនៃវីដេអូ**\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "អ្នកអាចកំណត់ប្រវែងវីដេអូបានតាមតម្រូវការ៖\n\n"
+            "1. ⚡ **វីដេអូខ្លី (30s - 60s)** ៖\n"
+            "   ស័ក្តិសមសម្រាប់ TikTok / Reels / Shorts\n"
+            "   👉 ឧទាហរណ៍៖ `/script ប្រធានបទ 60s`\n\n"
+            "2. 📽️ **វីដេអូមធ្យម (2 - 3 នាទី)** ៖\n"
+            "   ស័ក្តិសមសម្រាប់ Facebook Explainer\n"
+            "   👉 ឧទាហរណ៍៖ `/script ប្រធានបទ 3mn`\n\n"
+            "3. 🎥 **វីដេអូវែង (5 - 10 នាទី)** ៖\n"
+            "   ស័ក្តិសមសម្រាប់ YouTube Tutorial / Masterclass\n"
+            "   👉 ឧទាហរណ៍៖ `/script ប្រធានបទ 5mn`\n"
+            "━━━━━━━━━━━━━━━━━━━━━"
+        )
+        await safe_reply(query.message, duration_info)
     elif data == "btn_subscribe":
         await subscribe_command(update, context)
     elif data == "btn_unsubscribe":
