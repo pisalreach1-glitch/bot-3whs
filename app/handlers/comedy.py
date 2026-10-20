@@ -43,6 +43,13 @@ async def handle_comedy_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer("⚠️ ប៊ូតុងនេះផុតសុពលភាពហើយ។", show_alert=True)
         return
 
+    style_label = {
+        "everyday": "ជីវិតរស់នៅប្រចាំថ្ងៃ (Everyday)",
+        "parody": "ការលេងត្រាប់តាម (Parody)",
+        "drama": "រឿងតូចធ្វើរឿងធំ (Over-dramatic)",
+        "sarcasm": "កំប្លែងឌឺដង/ចំអក (Sarcastic)",
+    }.get(decoded.extra, decoded.extra)
+
     # 1. Select Style -> go to Actors
     if decoded.action == "sty":
         draft.comedy_style = decoded.extra
@@ -53,7 +60,7 @@ async def handle_comedy_callback(update: Update, context: ContextTypes.DEFAULT_T
         msg = (
             "👥 *ចំនួនតួអង្គសម្ដែង (Actor Count)*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            f"• ស្ទីលជ្រើសរើស៖ *{draft.comedy_style}*\n\n"
+            f"• ស្ទីលជ្រើសរើស៖ *{style_label}*\n\n"
             "សូមជ្រើសរើសចំនួនតួអង្គដែលអ្នកចង់ឱ្យសម្ដែងក្នុងវីដេអូ៖"
         )
         keyboard = get_comedy_actors_keyboard(draft)
@@ -67,15 +74,23 @@ async def handle_comedy_callback(update: Update, context: ContextTypes.DEFAULT_T
         storage.save_draft(user_key, draft)
         navigation.go_to(user_key, Screens.TOPIC_INPUT, draft_id=draft.id)
 
+        saved_style = {
+            "everyday": "ជីវិតរស់នៅប្រចាំថ្ងៃ (Everyday)",
+            "parody": "ការលេងត្រាប់តាម (Parody)",
+            "drama": "រឿងតូចធ្វើរឿងធំ (Over-dramatic)",
+            "sarcasm": "កំប្លែងឌឺដង/ចំអក (Sarcastic)",
+        }.get(draft.comedy_style, draft.comedy_style)
+
         msg = (
             "🎭 *សូមបញ្ចូលប្រធានបទ ឬស្ថានភាពកំប្លែង*\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            f"• ស្ទីល៖ *{draft.comedy_style}* | តួអង្គ៖ *{draft.actor_count} នាក់*\n\n"
+            f"• ស្ទីល៖ *{saved_style}* | តួអង្គ៖ *{draft.actor_count} នាក់*\n\n"
             "សូមវាយប្រធានបទ ស្ថានភាព ឬគំនិតកំប្លែងដែលអ្នកចង់ផលិត៖\n\n"
             "_ឧទាហរណ៍៖_\n"
             "• «ពេលម៉ែប្រើទៅទិញម្ទេស តែភ្លេចទិញប្រហុក»\n"
             "• «ពេលមិត្តភក្តិខ្ចីលុយ ដល់ពេលសងបែរជាខឹងយើងវិញ»\n"
             "• «ថ្ងៃដំបូងចូលធ្វើការ ធ្វើចេះគ្រប់រឿង»\n"
-            "• «ពេលសុំច្បាប់មេ តែចៃដន្យជួបមេនៅផ្សារ»"
+            "• «ពេលសុំច្បាប់មេ តែចៃដន្យជួបមេនៅផ្សារ»\n\n"
+            "💡 _អ្នកអាចចុច ⬅️ ត្រឡប់ក្រោយ ឬ /cancel ដើម្បីបោះបង់!_"
         )
         await safe_edit(query, msg, reply_markup=get_back_home_keyboard())

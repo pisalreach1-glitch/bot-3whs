@@ -98,7 +98,14 @@ def render_topic_prompt(format_id: str, niche: Optional[str] = None) -> str:
     fmt_name = FORMAT_NAMES.get(format_id, "Script")
     niche_str = (niche or "").lower()
 
-    if any(k in niche_str for k in ["food", "ម្ហូប", "cook"]):
+    if format_id == "comedy":
+        ex_list = [
+            "«ពេលម៉ែប្រើទៅទិញម្ទេស តែភ្លេចទិញប្រហុក»",
+            "«ពេលមិត្តភក្តិខ្ចីលុយ ដល់ពេលសងបែរជាខឹងយើងវិញ»",
+            "«ថ្ងៃដំបូងចូលធ្វើការ ធ្វើចេះគ្រប់រឿង»",
+            "«ពេលសុំច្បាប់មេ តែចៃដន្យជួបមេនៅផ្សារ»",
+        ]
+    elif any(k in niche_str for k in ["food", "ម្ហូប", "cook"]):
         ex_list = NICHE_EXAMPLES["food"]
     elif any(k in niche_str for k in ["coffee", "កាហ្វេ", "beverage", "ភេសជ្ជៈ"]):
         ex_list = NICHE_EXAMPLES["coffee"]
@@ -139,22 +146,29 @@ def render_review(draft: Draft, pace: float) -> str:
     fmt_name = FORMAT_NAMES.get(draft.format_id, draft.format_id)
     dur_label = f"{draft.duration_seconds} វិនាទី" if draft.duration_seconds < 60 else f"{draft.duration_seconds // 60} នាទី ({draft.duration_seconds} វិនាទី)"
     niche_label = draft.niche if draft.niche else "ទូទៅ"
+    clean_topic = draft.topic.replace("_", "\\_").replace("*", "\\*")
 
     lines = [
         "📋 *ផ្ទៀងផ្ទាត់ព័ត៌មានសំណើ (Draft Review)*",
         "━━━━━━━━━━━━━━━━━━━━━",
-        f"• 🎯 **វិស័យមាតិកា**: {niche_label}",
-        f"• 🎬 **ទម្រង់មាតិកា**: {fmt_name}",
-        f"• 📝 **ប្រធានបទ**: {draft.topic}",
-        f"• ⏱️ **រយៈពេលវីដេអូ**: `{dur_label}`",
-        f"• 🎙️ **ល្បឿននិយាយប៉ាន់ស្មាន**: `{pace:.1f} តួអក្សរ/វិនាទី`",
+        f"• 🎯 *វិស័យមាតិកា*: {niche_label}",
+        f"• 🎬 *ទម្រង់មាតិកា*: {fmt_name}",
+        f"• 📝 *ប្រធានបទ*: {clean_topic}",
+        f"• ⏱️ *រយៈពេលវីដេអូ*: `{dur_label}`",
+        f"• 🎙️ *ល្បឿននិយាយប៉ាន់ស្មាន*: `{pace:.1f} តួអក្សរ/វិនាទី`",
     ]
     if draft.comedy_style:
-        lines.append(f"• 😂 **ស្ទីលកំប្លែង**: {draft.comedy_style}")
+        style_label = {
+            "everyday": "ជីវិតរស់នៅប្រចាំថ្ងៃ (Everyday)",
+            "parody": "ការលេងត្រាប់តាម (Parody)",
+            "drama": "រឿងតូចធ្វើរឿងធំ (Over-dramatic)",
+            "sarcasm": "កំប្លែងឌឺដង/ចំអក (Sarcastic)",
+        }.get(draft.comedy_style, draft.comedy_style)
+        lines.append(f"• 😂 *ស្ទីលកំប្លែង*: {style_label}")
     if draft.actor_count:
-        lines.append(f"• 👥 **ចំនួនតួអង្គ**: {draft.actor_count} នាក់")
+        lines.append(f"• 👥 *ចំនួនតួអង្គ*: {draft.actor_count} នាក់")
     if draft.evidence_ids:
-        lines.append(f"• 🔗 **យោងព័ត៌មានថ្មីៗ**: {len(draft.evidence_ids)} ប្រភព")
+        lines.append(f"• 🔗 *យោងព័ត៌មានថ្មីៗ*: {len(draft.evidence_ids)} ប្រភព")
 
     lines.extend([
         "━━━━━━━━━━━━━━━━━━━━━",

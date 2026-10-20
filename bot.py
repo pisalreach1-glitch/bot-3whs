@@ -151,9 +151,43 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             storage.save_user_niche(user_key, custom_niche)
             storage.clear_incompatible_drafts(user_key)
 
+            pending_comedy = False
+            if hasattr(context, "user_data") and isinstance(context.user_data, dict):
+                if context.user_data.get("pending_action") == "comedy":
+                    pending_comedy = True
+                    context.user_data.pop("pending_action", None)
+
             settings = storage.get_settings(user_key)
             from script_models import parse_duration_seconds
             dur_s = parse_duration_seconds(settings["duration"])
+
+            from app.telegram_io import safe_reply
+
+            if pending_comedy:
+                draft = Draft(
+                    id=f"d_{uuid.uuid4().hex[:8]}",
+                    revision=1,
+                    format_id="comedy",
+                    topic="",
+                    duration_seconds=dur_s,
+                    audience="",
+                    comedy_style="everyday",
+                    actor_count=1,
+                    current_step="comedy_style",
+                    owner=user_key,
+                    niche=custom_niche,
+                )
+                storage.save_draft(user_key, draft)
+                navigation.go_to(user_key, Screens.COMEDY_STYLE, draft_id=draft.id)
+                from app.keyboards import get_comedy_styles_keyboard
+                notice = (
+                    f"✅ *បានកំណត់វិស័យផ្ទាល់ខ្លួន៖* `{custom_niche}`\n\n"
+                    "😂 *ជ្រើសរើសស្ទីលកំប្លែង (Comedy Style)*\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    "សូមជ្រើសរើសទម្រង់កំប្លែងដែលអ្នកចង់ផលិតខាងក្រោម៖"
+                )
+                await safe_reply(update.message, notice, reply_markup=get_comedy_styles_keyboard(draft))
+                return
 
             draft = Draft(
                 id=f"d_{uuid.uuid4().hex[:8]}",
@@ -171,7 +205,6 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
             from app.views import render_format_selection
             from app.keyboards import get_format_selection_keyboard
-            from app.telegram_io import safe_reply
 
             notice = (
                 f"✅ *បានកំណត់វិស័យផ្ទាល់ខ្លួន៖* `{custom_niche}`\n"
@@ -182,28 +215,42 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             await safe_reply(update.message, msg, reply_markup=keyboard)
             return
 
-    # 1. State: Entering Topic for Draft (Flexible at Topic Input, Topic/Ideas, or Format Selection)
-    elif (state.current_screen in (Screens.TOPIC_INPUT, Screens.TOPIC_OR_IDEAS, Screens.FORMAT_SELECTION, Screens.IDEA_RESULTS)) and state.draft_id:
-        draft = storage.get_draft(state.draft_id)
-        if draft:
-            draft.topic = user_text.strip()
-            draft.audience = user_text.strip()
-            if not draft.niche:
-                draft.niche = storage.get_user_niche(user_key) or "ទូទៅ"
-            draft.revision += 1
-            draft.current_step = "review"
-            storage.save_draft(user_key, draft)
-            navigation.go_to(user_key, Screens.DRAFT_REVIEW, draft_id=draft.id)
+    # 1. State: Entering Topic for Draft (Flexible across input screens with database draft recovery)
+    active_screens = (
+        Screens.TOPIC_INPUT,
+        Screens.TOPIC_OR_IDEAS,
+        Screens.FORMAT_SELECTION,
+        Screens.IDEA_RESULTS,
+        Screens.COMEDY_STYLE,
+        Screens.COMEDY_ACTORS,
+    )
+    draft = storage.get_draft(state.draft_id) if state.draft_id else storage.get_latest_draft(user_key)
+    if draft and not state.draft_id:
+        state.draft_id = draft.id
 
-            settings = storage.get_settings(user_key)
-            from app.views import render_review
-            from app.keyboards import get_review_keyboard
-            from app.telegram_io import safe_reply
+    is_entering_topic = (state.current_screen in active_screens) or (
+        state.current_screen == Screens.HOME and draft and not draft.topic and draft.current_step in ("topic", "topic_or_ideas", "comedy_style", "comedy_actors", "format")
+    )
 
-            msg = render_review(draft, settings["pace"])
-            keyboard = get_review_keyboard(draft)
-            await safe_reply(update.message, msg, reply_markup=keyboard)
-            return
+    if is_entering_topic and draft:
+        draft.topic = user_text.strip()
+        draft.audience = user_text.strip()
+        if not draft.niche:
+            draft.niche = storage.get_user_niche(user_key) or "ទូទៅ"
+        draft.revision += 1
+        draft.current_step = "review"
+        storage.save_draft(user_key, draft)
+        navigation.go_to(user_key, Screens.DRAFT_REVIEW, draft_id=draft.id)
+
+        settings = storage.get_settings(user_key)
+        from app.views import render_review
+        from app.keyboards import get_review_keyboard
+        from app.telegram_io import safe_reply
+
+        msg = render_review(draft, settings["pace"])
+        keyboard = get_review_keyboard(draft)
+        await safe_reply(update.message, msg, reply_markup=keyboard)
+        return
 
     # 2. State: Entering Pace Seconds
     elif state.current_screen == Screens.PACE_SECONDS:

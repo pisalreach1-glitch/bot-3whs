@@ -24,6 +24,7 @@ from app.keyboards import (
     get_draft_duration_keyboard,
     get_back_home_keyboard,
     get_topic_or_ideas_keyboard,
+    get_comedy_styles_keyboard,
 )
 from app.views import (
     render_topic_prompt,
@@ -66,6 +67,20 @@ async def handle_format_callback(update: Update, context: ContextTypes.DEFAULT_T
     if not draft.niche:
         saved_niche = storage.get_user_niche(user_key)
         draft.niche = saved_niche or "ទូទៅ"
+
+    if decoded.action == "comedy":
+        draft.current_step = "comedy_style"
+        storage.save_draft(user_key, draft)
+        navigation.go_to(user_key, Screens.COMEDY_STYLE, draft_id=draft.id)
+        msg = (
+            "😂 *ជ្រើសរើសស្ទីលកំប្លែង (Comedy Style)*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎯 វិស័យ៖ `{draft.niche}`\n\n"
+            "សូមជ្រើសរើសទម្រង់កំប្លែងដែលអ្នកចង់ផលិតខាងក្រោម៖"
+        )
+        await safe_edit(query, msg, reply_markup=get_comedy_styles_keyboard(draft))
+        return
+
     draft.current_step = "topic_or_ideas"
     storage.save_draft(user_key, draft)
     navigation.go_to(user_key, Screens.TOPIC_OR_IDEAS, draft_id=draft.id)
@@ -157,16 +172,26 @@ async def handle_generate_callback(update: Update, context: ContextTypes.DEFAULT
         await query.answer("⏳ Bot កំពុងដំណើរការសំណើមុនរបស់អ្នក... សូមរង់ចាំមួយភ្លែត ឬចុច /cancel!", show_alert=True)
         return
 
-    status_msg = await query.message.reply_text(
-        f"⏳ *កំពុងបង្កើត Script វីដេអូ...*\n"
-        f"_ប្រធានបទ: {draft.topic}_\n"
-        f"_រយៈពេល: {draft.duration_seconds} វិនាទី_\n\n"
-        "សូមរង់ចាំមួយភ្លែត...",
-        parse_mode="Markdown",
-        reply_markup=get_cancel_processing_keyboard(request_id),
-    )
-
     try:
+        clean_topic = draft.topic.replace("_", "\\_").replace("*", "\\*")
+        try:
+            status_msg = await query.message.reply_text(
+                f"⏳ *កំពុងបង្កើត Script វីដេអូ...*\n"
+                f"_ប្រធានបទ: {clean_topic}_\n"
+                f"_រយៈពេល: {draft.duration_seconds} វិនាទី_\n\n"
+                "សូមរង់ចាំមួយភ្លែត...",
+                parse_mode="Markdown",
+                reply_markup=get_cancel_processing_keyboard(request_id),
+            )
+        except Exception:
+            status_msg = await query.message.reply_text(
+                f"⏳ កំពុងបង្កើត Script វីដេអូ...\n"
+                f"ប្រធានបទ: {draft.topic}\n"
+                f"រយៈពេល: {draft.duration_seconds} វិនាទី\n\n"
+                "សូមរង់ចាំមួយភ្លែត...",
+                reply_markup=get_cancel_processing_keyboard(request_id),
+            )
+
         # 3. Execute generation pipeline
         result = await execute_generation_request(request, storage, ai, token, task_mgr)
 
@@ -213,15 +238,25 @@ async def handle_retry_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!", show_alert=True)
         return
 
-    status_msg = await query.message.reply_text(
-        f"🔄 *កំពុងសាកល្បងសំណើឡើងវិញ...*\n"
-        f"_ប្រធានបទ: {request.draft_snapshot.get('topic', '')}_\n\n"
-        "សូមរង់ចាំមួយភ្លែត...",
-        parse_mode="Markdown",
-        reply_markup=get_cancel_processing_keyboard(request.id),
-    )
-
     try:
+        raw_topic = request.draft_snapshot.get('topic', '')
+        clean_topic = raw_topic.replace("_", "\\_").replace("*", "\\*")
+        try:
+            status_msg = await query.message.reply_text(
+                f"🔄 *កំពុងសាកល្បងសំណើឡើងវិញ...*\n"
+                f"_ប្រធានបទ: {clean_topic}_\n\n"
+                "សូមរង់ចាំមួយភ្លែត...",
+                parse_mode="Markdown",
+                reply_markup=get_cancel_processing_keyboard(request.id),
+            )
+        except Exception:
+            status_msg = await query.message.reply_text(
+                f"🔄 កំពុងសាកល្បងសំណើឡើងវិញ...\n"
+                f"ប្រធានបទ: {raw_topic}\n\n"
+                "សូមរង់ចាំមួយភ្លែត...",
+                reply_markup=get_cancel_processing_keyboard(request.id),
+            )
+
         result = await execute_generation_request(request, storage, ai, token, task_mgr)
         if not task_mgr.is_current_request(user_key, token):
             return

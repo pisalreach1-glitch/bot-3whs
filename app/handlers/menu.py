@@ -19,6 +19,7 @@ from app.keyboards import (
     get_script_actions_keyboard,
     get_review_keyboard,
     get_comedy_styles_keyboard,
+    get_comedy_actors_keyboard,
     get_back_home_keyboard,
     get_draft_duration_keyboard,
 )
@@ -103,9 +104,41 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         storage.save_user_niche(user_key, chosen_niche)
         storage.clear_incompatible_drafts(user_key)
 
+        pending_comedy = False
+        if hasattr(context, "user_data") and isinstance(context.user_data, dict):
+            if context.user_data.get("pending_action") == "comedy":
+                pending_comedy = True
+                context.user_data.pop("pending_action", None)
+
         from script_models import parse_duration_seconds
         settings = storage.get_settings(user_key)
         dur_s = parse_duration_seconds(settings["duration"])
+
+        if pending_comedy:
+            draft = Draft(
+                id=f"d_{uuid.uuid4().hex[:8]}",
+                revision=1,
+                format_id="comedy",
+                topic="",
+                duration_seconds=dur_s,
+                audience="",
+                comedy_style="everyday",
+                actor_count=1,
+                current_step="comedy_style",
+                owner=user_key,
+                niche=chosen_niche,
+            )
+            storage.save_draft(user_key, draft)
+            navigation.go_to(user_key, Screens.COMEDY_STYLE, draft_id=draft.id)
+            notice_text = (
+                f"✅ *បានកំណត់វិស័យ៖* `{chosen_niche}`\n\n"
+                "😂 *ជ្រើសរើសស្ទីលកំប្លែង (Comedy Style)*\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "សូមជ្រើសរើសទម្រង់កំប្លែងដែលអ្នកចង់ផលិតខាងក្រោម៖"
+            )
+            keyboard = get_comedy_styles_keyboard(draft)
+            await safe_edit(query, notice_text, reply_markup=keyboard)
+            return
 
         draft = Draft(
             id=f"d_{uuid.uuid4().hex[:8]}",
@@ -167,6 +200,8 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     elif action == "comedy":
         saved_niche = storage.get_user_niche(user_key)
         if not saved_niche:
+            if hasattr(context, "user_data") and isinstance(context.user_data, dict):
+                context.user_data["pending_action"] = "comedy"
             navigation.go_to(user_key, Screens.NICHE_SELECTION)
             msg = render_niche_selection()
             keyboard = get_niche_selection_keyboard()
@@ -186,15 +221,20 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             audience="",
             comedy_style="everyday",
             actor_count=1,
-            current_step="topic_or_ideas",
+            current_step="comedy_style",
             owner=user_key,
             niche=saved_niche,
         )
         storage.save_draft(user_key, draft)
-        navigation.go_to(user_key, Screens.TOPIC_OR_IDEAS, draft_id=draft.id)
+        navigation.go_to(user_key, Screens.COMEDY_STYLE, draft_id=draft.id)
 
-        msg = render_topic_or_ideas(draft.format_id, draft.niche)
-        keyboard = get_topic_or_ideas_keyboard(draft)
+        msg = (
+            "😂 *ជ្រើសរើសស្ទីលកំប្លែង (Comedy Style)*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎯 វិស័យ៖ `{saved_niche}`\n\n"
+            "សូមជ្រើសរើសទម្រង់កំប្លែងដែលអ្នកចង់ផលិតខាងក្រោម៖"
+        )
+        keyboard = get_comedy_styles_keyboard(draft)
         await safe_edit(query, msg, reply_markup=keyboard)
 
     # ── TOPIC OR IDEAS CHOICES ────────────────
@@ -317,7 +357,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         if req.owner != user_key:
             await query.answer("⚠️ អ្នកគ្មានសិទ្ធិកែប្រែសំណើរបស់អ្នកដទៃឡើយ!", show_alert=True)
             return
-        from app.models import Draft
         draft = Draft.from_dict(req.draft_snapshot)
         draft.id = f"d_{uuid.uuid4().hex[:8]}"
         draft.revision = 1
@@ -382,11 +421,73 @@ async def render_current_screen(query, user_key: UserKey, screen: str, state, st
         keyboard = get_draft_duration_keyboard(draft)
         await safe_edit(query, msg, reply_markup=keyboard)
 
-    elif screen == Screens.TOPIC_INPUT:
-        draft = storage.get_draft(state.draft_id) if state.draft_id else None
+    elif screen == Screens.NICHE_CUSTOM_INPUT:
+        msg = (
+            "✏️ *សូមវាយបញ្ចូលវិស័យមាតិកាផ្ទាល់ខ្លួនរបស់អ្នក (Custom Niche)*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "សូមវាយឈ្មោះវិស័យមាតិកាដែលអ្នកចង់ផលិតរួចផ្ញើមកកាន់ Bot៖\n\n"
+            "_ឧទាហរណ៍៖ Khmer cooking, ទេសចរណ៍ និងដើរលេង, ហិរញ្ញវត្ថុផ្ទាល់ខ្លួន, សុខភាព..._\n\n"
+            "💡 _អ្នកអាចចុច ⬅️ ត្រឡប់ក្រោយ ឬ /cancel ដើម្បីបោះបង់!_"
+        )
+        await safe_edit(query, msg, reply_markup=get_back_home_keyboard())
+
+    elif screen == Screens.COMEDY_STYLE:
+        draft = storage.get_draft(state.draft_id) if state.draft_id else storage.get_latest_draft(user_key)
         if not draft:
             return await render_current_screen(query, user_key, Screens.HOME, state, storage)
-        msg = render_topic_prompt(draft.format_id, draft.niche)
+        msg = (
+            "😂 *ជ្រើសរើសស្ទីលកំប្លែង (Comedy Style)*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎯 វិស័យ៖ `{draft.niche or 'ទូទៅ'}`\n\n"
+            "សូមជ្រើសរើសទម្រង់កំប្លែងដែលអ្នកចង់ផលិតខាងក្រោម៖"
+        )
+        keyboard = get_comedy_styles_keyboard(draft)
+        await safe_edit(query, msg, reply_markup=keyboard)
+
+    elif screen == Screens.COMEDY_ACTORS:
+        draft = storage.get_draft(state.draft_id) if state.draft_id else storage.get_latest_draft(user_key)
+        if not draft:
+            return await render_current_screen(query, user_key, Screens.HOME, state, storage)
+        style_label = {
+            "everyday": "ជីវិតរស់នៅប្រចាំថ្ងៃ (Everyday)",
+            "parody": "ការលេងត្រាប់តាម (Parody)",
+            "drama": "រឿងតូចធ្វើរឿងធំ (Over-dramatic)",
+            "sarcasm": "កំប្លែងឌឺដង/ចំអក (Sarcastic)",
+        }.get(draft.comedy_style, draft.comedy_style or "everyday")
+        msg = (
+            "👥 *ចំនួនតួអង្គសម្ដែង (Actor Count)*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            f"• ស្ទីលជ្រើសរើស៖ *{style_label}*\n\n"
+            "សូមជ្រើសរើសចំនួនតួអង្គដែលអ្នកចង់ឱ្យសម្ដែងក្នុងវីដេអូ៖"
+        )
+        keyboard = get_comedy_actors_keyboard(draft)
+        await safe_edit(query, msg, reply_markup=keyboard)
+
+    elif screen == Screens.TOPIC_INPUT:
+        draft = storage.get_draft(state.draft_id) if state.draft_id else storage.get_latest_draft(user_key)
+        if not draft:
+            return await render_current_screen(query, user_key, Screens.HOME, state, storage)
+        if draft.format_id == "comedy":
+            style_label = {
+                "everyday": "ជីវិតរស់នៅប្រចាំថ្ងៃ (Everyday)",
+                "parody": "ការលេងត្រាប់តាម (Parody)",
+                "drama": "រឿងតូចធ្វើរឿងធំ (Over-dramatic)",
+                "sarcasm": "កំប្លែងឌឺដង/ចំអក (Sarcastic)",
+            }.get(draft.comedy_style, draft.comedy_style or "everyday")
+            msg = (
+                "🎭 *សូមបញ្ចូលប្រធានបទ ឬស្ថានភាពកំប្លែង*\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                f"• ស្ទីល៖ *{style_label}* | តួអង្គ៖ *{draft.actor_count or 1} នាក់*\n\n"
+                "សូមវាយប្រធានបទ ស្ថានភាព ឬគំនិតកំប្លែងដែលអ្នកចង់ផលិត៖\n\n"
+                "_ឧទាហរណ៍៖_\n"
+                "• «ពេលម៉ែប្រើទៅទិញម្ទេស តែភ្លេចទិញប្រហុក»\n"
+                "• «ពេលមិត្តភក្តិខ្ចីលុយ ដល់ពេលសងបែរជាខឹងយើងវិញ»\n"
+                "• «ថ្ងៃដំបូងចូលធ្វើការ ធ្វើចេះគ្រប់រឿង»\n"
+                "• «ពេលសុំច្បាប់មេ តែចៃដន្យជួបមេនៅផ្សារ»\n\n"
+                "💡 _អ្នកអាចចុច ⬅️ ត្រឡប់ក្រោយ ឬ /cancel ដើម្បីបោះបង់!_"
+            )
+        else:
+            msg = render_topic_prompt(draft.format_id, draft.niche)
         await safe_edit(query, msg, reply_markup=get_back_home_keyboard())
 
     elif screen == Screens.DRAFT_REVIEW:

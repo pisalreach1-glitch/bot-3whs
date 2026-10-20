@@ -342,6 +342,32 @@ class Storage:
                 niche=row["niche"] if ("niche" in row.keys() and row["niche"]) else None,
             )
 
+    def get_latest_draft(self, user_key: UserKey) -> Optional[Draft]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM drafts 
+                WHERE chat_id = ? AND user_id = ? 
+                ORDER BY updated_at DESC LIMIT 1
+            """, (user_key.chat_id, user_key.user_id))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return Draft(
+                id=row["id"],
+                revision=row["revision"],
+                format_id=row["format_id"],
+                topic=row["topic"],
+                duration_seconds=row["duration_seconds"],
+                audience=row["audience"],
+                comedy_style=row["comedy_style"],
+                actor_count=row["actor_count"],
+                evidence_ids=json.loads(row["evidence_ids_json"]),
+                current_step=row["current_step"],
+                owner=UserKey(row["chat_id"], row["user_id"]),
+                niche=row["niche"] if ("niche" in row.keys() and row["niche"]) else None,
+            )
+
     def save_draft(self, user_key: UserKey, draft: Draft):
         now_iso = datetime.now(timezone.utc).isoformat()
         with self._get_connection() as conn:

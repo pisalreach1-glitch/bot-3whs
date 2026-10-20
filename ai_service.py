@@ -32,6 +32,7 @@ from prompts import (
     get_news_grounded_ideas_prompt,
     get_daily_ideas_prompt,
     get_chat_prompt,
+    get_comedy_prompt,
 )
 
 load_dotenv()
@@ -234,6 +235,8 @@ class AIService:
             prompt = get_hot_take_prompt(topic, niche, duration)
         elif content_type == "toplist":
             prompt = get_top_list_prompt(topic, niche, duration)
+        elif content_type == "comedy":
+            prompt = get_comedy_prompt(topic, style="everyday", actor_count=1, duration=duration, niche=niche)
         else:
             prompt = get_script_generation_prompt(topic, duration)
 
