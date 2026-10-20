@@ -164,7 +164,9 @@ class AIService:
                 return "⚠️ សូមបញ្ចូល `GEMINI_API_KEY` នៅក្នុង file `.env` ជាមុនសិន!"
 
         models_to_try = [
+            "gemini-3-flash-preview",
             "gemini-3.5-flash",
+            "gemini-3.1-flash-lite-preview",
             "gemini-flash-latest",
             "gemini-2.5-flash",
         ]
@@ -206,7 +208,7 @@ class AIService:
                                 continue
                         break
 
-            if has_quota_error and not any("503" in e for e in errors):
+            if has_quota_error:
                 self.last_api_status = "⚠️ Quota Limit"
                 return (
                     "⚠️ **ប្រព័ន្ធ AI ទទួលសំណើច្រើន ឬដល់កម្រិតកំណត់បណ្ដោះអាសន្ន (Quota Limit)**\n\n"
@@ -214,12 +216,27 @@ class AIService:
                     "👉 សូមរង់ចាំមួយស្របក់ រួចចុចប៊ូតុង **[🔁 បង្កើតម្ដងទៀត]** នោះវានឹងដំណើរការវិញជាធម្មតា!"
                 )
 
-            self.last_api_status = f"🔴 Error: {errors[-1][:50] if errors else 'Unknown'}"
+            clean_reason = self._clean_error_reason(errors[-1] if errors else "")
+            self.last_api_status = f"🔴 Error: {clean_reason[:40]}"
             return (
                 f"❌ **AI មិនទាន់អាចឆ្លើយតបបាននៅពេលនេះ**\n\n"
-                f"មូលហេតុ: {errors[-1] if errors else 'High Demand'}\n\n"
+                f"មូលហេតុ: {clean_reason}\n\n"
                 "🔄 _សូមចុចប៊ូតុង [🔁 បង្កើតម្ដងទៀត] ក្នុងរយៈពេលខ្លីខាងមុខ!_"
             )
+
+    def _clean_error_reason(self, raw_err: str) -> str:
+        """Strip raw API JSON stack traces and return clean, creator-friendly explanation."""
+        if not raw_err:
+            return "ប្រព័ន្ធ AI កំពុងមានសំណើច្រើន (High Demand)"
+        err_lower = raw_err.lower()
+        if "429" in err_lower or "quota" in err_lower or "exhausted" in err_lower:
+            return "កម្រិតកំណត់សំណើប្រចាំថ្ងៃរបស់ Gemini Free Tier (Quota Limit)។ សូមរង់ចាំបន្តិច!"
+        if "503" in err_lower or "unavailable" in err_lower:
+            return "ម៉ាស៊ីនបម្រើការ AI កំពុងមមាញឹកបណ្ដោះអាសន្ន (High Demand)។"
+        if "timeout" in err_lower:
+            return "សំណើចំណាយពេលយូរពេក (Request Timeout)។"
+        clean = raw_err.split("{'error'")[0].strip()
+        return clean[:100] if clean else "ប្រព័ន្ធ AI កំពុងមមាញឹក"
 
     def _is_error_response(self, text: str) -> bool:
         if not text:
