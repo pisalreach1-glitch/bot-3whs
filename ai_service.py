@@ -1,12 +1,22 @@
 import os
 import re
+import json
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import pytz
 from dotenv import load_dotenv
+
 from trend_sources import get_fresh_news_sources, NewsItem
+from script_models import (
+    Scene,
+    ScriptPlan,
+    parse_duration_seconds,
+    parse_and_validate_script_plan,
+    format_script_for_telegram,
+    DEFAULT_CHARS_PER_SECOND,
+)
 from prompts import (
     SYSTEM_INSTRUCTION,
     get_script_generation_prompt,
@@ -28,6 +38,7 @@ logger = logging.getLogger(__name__)
 # In-memory daily ideas cache: "YYYY-MM-DD_category" -> cached_text
 _DAILY_IDEAS_CACHE: Dict[str, str] = {}
 _IDEAS_LOCK = asyncio.Lock()
+REQUEST_TIMEOUT_SECONDS = 45.0
 
 def clear_daily_ideas_cache():
     """Clear cached daily ideas (useful for testing)."""
@@ -80,7 +91,7 @@ class AIService:
             "last_status": getattr(self, "last_api_status", "ធម្មតា"),
         }
 
-    def _generate_sync(self, prompt: str) -> str:
+    def _generate_sync(self, prompt: str, is_json: bool = False) -> str:
         models_to_try = [
             "gemini-2.5-flash",
             "gemini-2.0-flash",
@@ -92,22 +103,30 @@ class AIService:
             try:
                 if self.sdk_type == "google-genai":
                     from google.genai import types
+                    config_kwargs = {
+                        "system_instruction": SYSTEM_INSTRUCTION,
+                        "temperature": 0.7,
+                    }
+                    if is_json:
+                        config_kwargs["response_mime_type"] = "application/json"
+                    
                     response = self.client.models.generate_content(
                         model=model_name,
                         contents=prompt,
-                        config=types.GenerateContentConfig(
-                            system_instruction=SYSTEM_INSTRUCTION,
-                            temperature=0.75,
-                        )
+                        config=types.GenerateContentConfig(**config_kwargs)
                     )
                     if response and response.text:
                         self.last_api_status = "🟢 ដំណើរការល្អ (Online)"
                         return response.text
                 elif self.sdk_type == "google-generativeai":
                     import google.generativeai as genai_legacy
+                    gen_config = {}
+                    if is_json:
+                        gen_config["response_mime_type"] = "application/json"
                     model = genai_legacy.GenerativeModel(
                         model_name=model_name,
-                        system_instruction=SYSTEM_INSTRUCTION
+                        system_instruction=SYSTEM_INSTRUCTION,
+                        generation_config=gen_config if gen_config else None
                     )
                     response = model.generate_content(prompt)
                     if response and response.text:
@@ -136,8 +155,11 @@ class AIService:
             "🔄 _សូមចុចប៊ូតុង [🔁 បង្កើតម្ដងទៀត] ក្នុងរយៈពេលខ្លីខាងមុខ!_"
         )
 
-    async def generate_response(self, prompt: str) -> str:
-        """Generate response asynchronously in a separate thread so it does not block the Telegram event loop."""
+    async def generate_response(self, prompt: str, is_json: bool = False) -> str:
+        """
+        Generate response asynchronously in a separate thread with a timeout 
+        so it does not block the Telegram event loop.
+        """
         if not self.is_configured():
             self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
             self._init_client()
@@ -145,70 +167,104 @@ class AIService:
                 self.last_api_status = "🔴 ខ្វះ API Key"
                 return "⚠️ សូមបញ្ចូល `GEMINI_API_KEY` នៅក្នុង file `.env` ជាមុនសិន!"
 
-        return await asyncio.to_thread(self._generate_sync, prompt)
-
-    # ─────────────────────────────────────────────
-    # Content Type Methods
-    # ─────────────────────────────────────────────
-
-    async def generate_script(self, topic: str, duration: str = "60 វិនាទី") -> str:
-        """3WHs Hook Script"""
-        prompt = get_script_generation_prompt(topic, duration)
-        return await self.generate_response(prompt)
-
-    async def generate_pov_story(self, situation: str, niche: str, duration: str = "60 វិនាទី") -> str:
-        """POV / Storytelling Content"""
-        prompt = get_pov_story_prompt(situation, niche, duration)
-        return await self.generate_response(prompt)
-
-    async def generate_myth_reality(self, myth: str, niche: str, duration: str = "60 វិនាទី") -> str:
-        """Myth vs Reality Content"""
-        prompt = get_myth_reality_prompt(myth, niche, duration)
-        return await self.generate_response(prompt)
-
-    async def generate_before_after(self, transformation: str, niche: str, duration: str = "60 វិនាទី") -> str:
-        """Before & After / Transformation Content"""
-        prompt = get_before_after_prompt(transformation, niche, duration)
-        return await self.generate_response(prompt)
-
-    async def generate_hot_take(self, opinion: str, niche: str, duration: str = "60 វិនាទី") -> str:
-        """Hot Take / Opinion Content"""
-        prompt = get_hot_take_prompt(opinion, niche, duration)
-        return await self.generate_response(prompt)
-
-    async def generate_top_list(self, topic: str, niche: str, duration: str = "60 វិនាទី") -> str:
-        """Top List / Ranking Content"""
-        prompt = get_top_list_prompt(topic, niche, duration)
-        return await self.generate_response(prompt)
-
-    async def generate_content_by_type(
-        self,
-        content_type: str,
-        topic: str,
-        niche: str,
-        duration: str = "60 វិនាទី"
-    ) -> str:
-        """Route to correct generator based on content_type."""
-        if content_type == "3whs":
-            return await self.generate_script(topic, duration)
-        elif content_type == "pov":
-            return await self.generate_pov_story(topic, niche, duration)
-        elif content_type == "myth":
-            return await self.generate_myth_reality(topic, niche, duration)
-        elif content_type == "transform":
-            return await self.generate_before_after(topic, niche, duration)
-        elif content_type == "hottake":
-            return await self.generate_hot_take(topic, niche, duration)
-        elif content_type == "toplist":
-            return await self.generate_top_list(topic, niche, duration)
-        else:
-            return await self.generate_script(topic, duration)
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(self._generate_sync, prompt, is_json),
+                timeout=REQUEST_TIMEOUT_SECONDS
+            )
+        except asyncio.TimeoutError:
+            self.last_api_status = "⚠️ Request Timeout"
+            return "⚠️ **សំណើចំណាយពេលយូរពេក (Request Timeout)**\nសូមចុច [🔁 បង្កើតម្ដងទៀត] ដើម្បីសាកល្បងឡើងវិញ។"
 
     def _is_error_response(self, text: str) -> bool:
         if not text:
             return True
         s = text.strip()
         return s.startswith("⚠️") or s.startswith("❌") or "Error:" in s
+
+    # ─────────────────────────────────────────────
+    # Content Type Methods (Structured Shooting Plan)
+    # ─────────────────────────────────────────────
+
+    async def generate_content_by_type(
+        self,
+        content_type: str,
+        topic: str,
+        niche: str,
+        duration: str = "60 វិនាទី",
+        user_pace: float = DEFAULT_CHARS_PER_SECOND
+    ) -> Tuple[str, Optional[ScriptPlan]]:
+        """
+        Generates a timestamped video script & shooting plan according to content format.
+        Validates timeline rules in Python and calculates estimated speaking duration.
+        Returns: (formatted_telegram_text, ScriptPlan)
+        """
+        target_s = parse_duration_seconds(duration)
+
+        if content_type == "3whs":
+            prompt = get_script_generation_prompt(topic, duration)
+        elif content_type == "pov":
+            prompt = get_pov_story_prompt(topic, niche, duration)
+        elif content_type == "myth":
+            prompt = get_myth_reality_prompt(topic, niche, duration)
+        elif content_type == "transform":
+            prompt = get_before_after_prompt(topic, niche, duration)
+        elif content_type == "hottake":
+            prompt = get_hot_take_prompt(topic, niche, duration)
+        elif content_type == "toplist":
+            prompt = get_top_list_prompt(topic, niche, duration)
+        else:
+            prompt = get_script_generation_prompt(topic, duration)
+
+        raw_response = await self.generate_response(prompt, is_json=True)
+
+        if self._is_error_response(raw_response):
+            return raw_response, None
+
+        # Parse, validate timeline, and check speaking pace
+        plan = parse_and_validate_script_plan(raw_response, target_s, user_pace)
+
+        # Format human-readable output for Telegram
+        formatted_text = format_script_for_telegram(plan, user_pace)
+        return formatted_text, plan
+
+    async def refine_shorten(
+        self,
+        last_script_text: str,
+        duration: str = "60 វិនាទី",
+        user_pace: float = DEFAULT_CHARS_PER_SECOND
+    ) -> Tuple[str, Optional[ScriptPlan]]:
+        """
+        Refines the script to make dialogue punchier and shorter.
+        Re-validates the timeline and recalculates estimated speaking duration.
+        """
+        target_s = parse_duration_seconds(duration)
+        prompt = get_refine_shorten_prompt(last_script_text, duration)
+        raw_response = await self.generate_response(prompt, is_json=True)
+
+        if self._is_error_response(raw_response):
+            return raw_response, None
+
+        plan = parse_and_validate_script_plan(raw_response, target_s, user_pace)
+        formatted_text = format_script_for_telegram(plan, user_pace)
+        return formatted_text, plan
+
+    async def refine_hook(self, last_script: str) -> str:
+        """
+        Generate 3 alternative hooks for the script.
+        This provides hook choices for the user and does NOT overwrite the full script.
+        """
+        prompt = get_refine_hook_prompt(last_script)
+        return await self.generate_response(prompt, is_json=False)
+
+    async def chat(self, user_message: str) -> str:
+        """Free-text chat with 3WHs AI Coach"""
+        prompt = get_chat_prompt(user_message)
+        return await self.generate_response(prompt, is_json=False)
+
+    # ─────────────────────────────────────────────
+    # News-Grounded Daily Content Ideas
+    # ─────────────────────────────────────────────
 
     async def generate_daily_ideas(self, category: str = "ទូទៅ") -> str:
         """
@@ -222,7 +278,9 @@ class AIService:
         7. Concurrency locked to prevent duplicate Gemini calls from identical requests.
         """
         tz = pytz.timezone("Asia/Phnom_Penh")
-        local_date_str = datetime.now(tz).strftime("%Y-%m-%d")
+        now_local = datetime.now(tz)
+        local_date_str = now_local.strftime("%Y-%m-%d")
+        retrieval_date_str = now_local.strftime("%d/%m/%Y %H:%M")
         cat_clean = category.strip() if category else "ទូទៅ"
         cat_key = cat_clean.lower()
         cache_key = f"{local_date_str}_{cat_key}"
@@ -253,12 +311,12 @@ class AIService:
             if news_items:
                 sources_lines = []
                 for it in news_items:
-                    date_display = it.published_at.strftime("%d/%m %H:%M UTC") if it.published_at else ""
-                    sources_lines.append(f"[{it.id}] ចំណងជើង: {it.title} | សារព័ត៌មាន: {it.publisher} ({date_display})")
+                    date_display = it.published_at.strftime("%d/%m/%Y %H:%M UTC") if it.published_at else "កាលបរិច្ឆេទមិនបញ្ជាក់"
+                    sources_lines.append(f"[{it.id}] ចំណងជើង: {it.title} | សារព័ត៌មាន: {it.publisher} (ចុះផ្សាយ: {date_display})")
                 sources_text = "\n".join(sources_lines)
 
                 prompt = get_news_grounded_ideas_prompt(sources_text, cat_clean)
-                raw_response = await self.generate_response(prompt)
+                raw_response = await self.generate_response(prompt, is_json=False)
 
                 # Check for error
                 if self._is_error_response(raw_response):
@@ -282,15 +340,19 @@ class AIService:
                     verified_links.append("🔗 **ប្រភពព័ត៌មានយោងពិតប្រាកដ (Verified Sources):**")
                     for item_id in sorted(valid_refs):
                         item = next(it for it in news_items if it.id == item_id)
-                        verified_links.append(f"• [{item.id}] [{item.publisher}: {item.title}]({item.url})")
-                    verified_links.append("\n💡 _(គំនិតខាងលើត្រូវបានបង្កើតផ្អែកលើព័ត៌មានថ្មីៗក្នុងរយៈពេល ៤៨ ម៉ោងចុងក្រោយ មិនមែនជាទិន្នន័យ Trend ផ្ទាល់ពី TikTok/Facebook ឡើយ)_")
+                        pub_str = item.published_at.strftime("%d/%m/%Y") if item.published_at else "មិនបញ្ជាក់កាលបរិច្ឆេទ"
+                        verified_links.append(f"• [{item.id}] [{item.publisher}: {item.title}]({item.url}) — _ចុះផ្សាយ: {pub_str}_")
+                    verified_links.append(f"📅 _កាលបរិច្ឆេទទាញយកទិន្នន័យ (Retrieved): {retrieval_date_str} (Asia/Phnom_Penh)_")
+                    verified_links.append("💡 _(គំនិតខាងលើត្រូវបានបង្កើតផ្អែកលើព័ត៌មានថ្មីៗក្នុងរយៈពេល ៤៨ ម៉ោងចុងក្រោយ មិនមែនជាទិន្នន័យ Trend ផ្ទាល់ពី TikTok/Facebook ឡើយ)_")
                 else:
                     # If Gemini did not reference valid IDs, list the retrieved sources openly
                     verified_links.append("\n━━━━━━━━━━━━━━━━━━━━━")
                     verified_links.append("🔗 **បញ្ជីព័ត៌មានថ្មីៗដែលបានទាញយកមកពិនិត្យ៖**")
                     for item in news_items:
-                        verified_links.append(f"• [{item.publisher}: {item.title}]({item.url})")
-                    verified_links.append("\n💡 _(គំនិតខាងលើត្រូវបានបំផុសចេញពីព័ត៌មានថ្មីៗក្នុងរយៈពេល ៤៨ ម៉ោងចុងក្រោយ មិនមែនជាទិន្នន័យ Trend ផ្ទាល់ពី TikTok/Facebook ឡើយ)_")
+                        pub_str = item.published_at.strftime("%d/%m/%Y") if item.published_at else "មិនបញ្ជាក់កាលបរិច្ឆេទ"
+                        verified_links.append(f"• [{item.publisher}: {item.title}]({item.url}) — _ចុះផ្សាយ: {pub_str}_")
+                    verified_links.append(f"📅 _កាលបរិច្ឆេទទាញយកទិន្នន័យ (Retrieved): {retrieval_date_str} (Asia/Phnom_Penh)_")
+                    verified_links.append("💡 _(គំនិតខាងលើត្រូវបានបំផុសចេញពីព័ត៌មានថ្មីៗក្នុងរយៈពេល ៤៨ ម៉ោងចុងក្រោយ មិនមែនជាទិន្នន័យ Trend ផ្ទាល់ពី TikTok/Facebook ឡើយ)_")
 
                 final_output = (
                     "📰 *គំនិតមាតិកាផ្អែកលើព័ត៌មានថ្មីៗ*\n"
@@ -305,7 +367,7 @@ class AIService:
             # 5. Honest Fallback: When no fresh items or unsupported category
             logger.info(f"No fresh news evidence for category '{cat_clean}'. Using honest fallback.")
             prompt = get_daily_ideas_prompt(cat_clean)
-            raw_response = await self.generate_response(prompt)
+            raw_response = await self.generate_response(prompt, is_json=False)
 
             if self._is_error_response(raw_response):
                 return raw_response  # Do NOT cache errors
@@ -317,23 +379,7 @@ class AIService:
                 + ")_\n"
                 "━━━━━━━━━━━━━━━━━━━━━\n\n"
             )
-            # Remove any duplicate header if Gemini output it
             clean_body = raw_response.replace("━━━━━━━━━━━━━━━━━━━━━\n💡 **គំនិតមាតិកាទូទៅពី AI**\nℹ️ _(គំនិតទូទៅពី AI - មិនបានផ្ទៀងផ្ទាត់ជាមួយព័ត៌មានថ្មីៗ)_\n━━━━━━━━━━━━━━━━━━━━━", "").strip()
             final_output = honest_header + clean_body
             _DAILY_IDEAS_CACHE[cache_key] = final_output
             return final_output
-
-    async def refine_hook(self, last_script: str) -> str:
-        """Generate 3 alternative hooks for the script"""
-        prompt = get_refine_hook_prompt(last_script)
-        return await self.generate_response(prompt)
-
-    async def refine_shorten(self, last_script: str) -> str:
-        """Make the script punchier and shorter"""
-        prompt = get_refine_shorten_prompt(last_script)
-        return await self.generate_response(prompt)
-
-    async def chat(self, user_message: str) -> str:
-        """Free-text chat"""
-        prompt = get_chat_prompt(user_message)
-        return await self.generate_response(prompt)

@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 .system_generated/
 subscribers.json
+user_settings.json

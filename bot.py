@@ -195,6 +195,19 @@ def set_user_duration(chat_id: int, duration: str):
     user_settings[str_id]["duration"] = duration
     save_user_settings_to_file(user_settings)
 
+DEFAULT_PACE = 10.0  # Default ~10 Khmer characters/syllable units per second
+
+def get_user_pace(chat_id: int) -> float:
+    cfg = user_settings.get(str(chat_id), {})
+    return float(cfg.get("pace", DEFAULT_PACE))
+
+def set_user_pace(chat_id: int, pace: float):
+    str_id = str(chat_id)
+    if str_id not in user_settings:
+        user_settings[str_id] = {}
+    user_settings[str_id]["pace"] = round(pace, 2)
+    save_user_settings_to_file(user_settings)
+
 def load_subscribers() -> set:
     if os.path.exists(SUBSCRIBERS_FILE):
         try:
@@ -385,9 +398,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📖 *ការណែនាំប្រើប្រាស់ Bot*\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "🔹 /start — បង្ហាញ Menu ទម្រង់ Content ទាំង ៦\n"
-        "🔹 /cancel — បោះបង់សំណើដែលកំពុងធ្វើ ហើយត្រឡប់ទៅ Menu\n"
+        "🔹 /cancel — បោះបង់សំណើបច្ចុប្បន្ន និងត្រឡប់ទៅ Menu ដើម\n"
         "🔹 /ideas [វិស័យ] — គំនិតមាតិកាផ្អែកលើព័ត៌មានថ្មីៗ (ឬ /ideas ធម្មតា)\n"
-        "🔹 /status — ពិនិត្យស្ថានភាពប្រព័ន្ធ និង API\n"
+        "🔹 /pace <វិនាទី> <អត្ថបទខ្មែរ> — វាស់ និងកំណត់ល្បឿននិយាយផ្ទាល់ខ្លួន\n"
+        "🔹 /status — ពិនិត្យស្ថានភាពប្រព័ន្ធ, API និងល្បឿននិយាយ\n"
         "🔹 /subscribe — ទទួលគំនិតមាតិការៀងរាល់ព្រឹក\n"
         "🔹 /unsubscribe — បិទការទទួលសារប្រចាំព្រឹក\n\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
@@ -418,22 +432,87 @@ async def ideas_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     duration = get_user_duration(chat_id)
+    pace = get_user_pace(chat_id)
     is_subbed = chat_id in subscribers
     api_info = ai_service.get_status_info()
     text = (
         "📊 *ស្ថានភាពប្រព័ន្ធលម្អិត (System Status)*\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         f"• ⏱️ រយៈពេលវីដេអូ: *{duration}*\n"
+        f"• 🎙️ ល្បឿននិយាយប៉ាន់ស្មាន: *{pace:.1f} តួអក្សរ/វិនាទី* (កំណត់តាម /pace)\n"
         f"• 🔔 Subscribe ប្រចាំថ្ងៃ: {'✅ បើក (ម៉ោង 08:00)' if is_subbed else '❌ មិនទាន់'}\n"
         f"• 👥 អ្នក Subscribe សរុប: *{len(subscribers)} នាក់*\n"
         f"• 🔑 Gemini API Key: {'✅ បានកំណត់រួចរាល់' if api_info['configured'] else '❌ មិនទាន់កំណត់'}\n"
         f"• ⚙️ AI Engine: *{api_info['sdk']}*\n"
         f"• 🟢 ស្ថានភាព API ចុងក្រោយ: *{api_info['last_status']}*\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
+        "ℹ️ _ការផ្សាយប្រចាំថ្ងៃដំណើរការបានលុះត្រាតែ Server ដំណើរការ (Online)_.\n"
         "💡 _ប្រើ /cancel ដើម្បីបោះបង់សំណើពេលណាក៏បាន!_"
     )
     target = update.message if update.message else update.callback_query.message
     await safe_reply(target, text)
+
+async def pace_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Calibrates user speaking pace without calling AI.
+    Usage: /pace <seconds> <Khmer sample text>
+    """
+    chat_id = update.effective_chat.id
+    target = update.message if update.message else (update.callback_query.message if update.callback_query else None)
+
+    if not context.args or len(context.args) < 2:
+        help_pace = (
+            "🎙️ *ការវាស់ និងកំណត់ល្បឿននិយាយផ្ទាល់ខ្លួន (Speaking Pace Calibration)*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "សូមអានអត្ថបទគំរូជាភាសាខ្មែរខាងក្រោម ដោយកំណត់ម៉ោង (Timer) នៅលើទូរស័ព្ទរបស់អ្នក រួចផ្ញើចំនួនវិនាទីដែលអ្នកបានអានចប់មកវិញ៖\n\n"
+            "📝 *អត្ថបទគំរូសាកល្បង៖*\n"
+            "_«សួស្តីអ្នកទាំងអស់គ្នា! ថ្ងៃនេះខ្ញុំមានគន្លឹះពិសេសមួយចង់ចែករំលែក សម្រាប់អ្នកដែលចង់ចាប់ផ្តើមផលិតមាតិកាវីដេអូខ្លីឱ្យទាក់ទាញ និងចំណេញពេលវេលា។»_\n\n"
+            "👉 *របៀបវាយបញ្ជា៖*\n"
+            "`/pace <ចំនួនវិនាទី> <អត្ថបទដែលអ្នកបានអាន>`\n\n"
+            "_ឧទាហរណ៍៖ (ប្រសិនបើអ្នកអានអត្ថបទខាងលើចំណាយពេល 10 វិនាទី)_\n"
+            "`/pace 10 សួស្តីអ្នកទាំងអស់គ្នា ថ្ងៃនេះខ្ញុំមានគន្លឹះពិសេសមួយចង់ចែករំលែក`\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "💡 _Bot នឹងគណនាល្បឿននិយាយរបស់អ្នក (តួអក្សរ/វិនាទី) ដើម្បីប៉ាន់ស្មានពេលវេលា Script ឱ្យកាន់តែសមស្រប!_"
+        )
+        await safe_reply(target, help_pace)
+        return
+
+    sec_str = context.args[0].strip()
+    try:
+        seconds = float(sec_str)
+        if seconds <= 0 or seconds > 600:
+            await safe_reply(target, "⚠️ សូមបញ្ចូលចំនួនវិនាទីវិជ្ជមានចន្លោះពី 1 ដល់ 600 វិនាទី។")
+            return
+    except ValueError:
+        await safe_reply(target, "⚠️ ចំនួនវិនាទីមិនត្រឹមត្រូវឡើយ។ ឧទាហរណ៍៖ `/pace 12 អត្ថបទ...`")
+        return
+
+    sample_text = " ".join(context.args[1:]).strip()
+    from script_models import count_khmer_dialogue_units
+    units = count_khmer_dialogue_units(sample_text)
+    if units < 5:
+        await safe_reply(target, "⚠️ អត្ថបទខ្លីពេកក្នុងការវាស់វែង សូមបញ្ចូលអត្ថបទគំរូយ៉ាងតិចពីរបីឃ្លា។")
+        return
+
+    calculated_pace = round(units / seconds, 2)
+    # Reasonable bounds: 3.0 to 25.0 chars/sec
+    if calculated_pace < 3.0:
+        calculated_pace = 3.0
+    elif calculated_pace > 25.0:
+        calculated_pace = 25.0
+
+    set_user_pace(chat_id, calculated_pace)
+    success_msg = (
+        "✅ *បានកំណត់ល្បឿននិយាយផ្ទាល់ខ្លួនជោគជ័យ!* 🎉\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"• ⏱️ រយៈពេលអាន៖ *{seconds:.1f} វិនាទី*\n"
+        f"• 📏 ចំនួនតួអក្សរ/ព្យាង្គរាប់បាន៖ *{units}*\n"
+        f"• 🎙️ ល្បឿនគណនាបាន៖ *{calculated_pace:.1f} តួអក្សរ/វិនាទី*\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "💡 _ចំណាំ៖ រយៈពេលនិយាយក្នុង Script គឺសម្រាប់តែការប៉ាន់ស្មានប៉ុណ្ណោះ។ "
+        "ល្បឿននិយាយជាក់ស្តែងនៅពេលថតអាចប្រែប្រួលតាមអារម្មណ៍ ការសង្កត់សំឡេង និងការផ្អាក (pauses)។_"
+    )
+    await safe_reply(target, success_msg)
 
 async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -580,7 +659,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             hook_response = await ai_service.refine_hook(last_script)
             await safe_edit(status_msg, hook_response)
             await query.message.reply_text(
-                "💡 *អ្នកអាចជ្រើស Hook ខាងលើទៅជំនួសបាន!* តើចង់កែអ្វីបន្តទៀត?",
+                "💡 *អ្នកអាចជ្រើស Hook ខាងលើទៅជំនួសបាន!* Script ដើមរបស់អ្នកនៅតែត្រូវបានរក្សាទុកដដែល។ តើចង់កែអ្វីបន្តទៀត?",
                 parse_mode="Markdown",
                 reply_markup=get_done_keyboard()
             )
@@ -597,13 +676,16 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         status_msg = await query.message.reply_text("✂️ *កំពុងកែសម្រួលឱ្យខ្លី ខ្លឹម និង Fast-paced ជាងមុន...*")
         try:
             context.user_data["is_processing"] = True
-            short_response = await ai_service.refine_shorten(last_script)
+            dur = context.user_data.get("last_duration", get_user_duration(chat_id))
+            pace = get_user_pace(chat_id)
+            short_response, plan = await ai_service.refine_shorten(last_script, dur, pace)
             await safe_edit(status_msg, short_response)
-            if not is_error_response(short_response):
+            if not is_error_response(short_response) and plan is not None:
                 context.user_data["last_script"] = short_response
+                context.user_data["last_script_plan"] = plan
                 notice = "✅ *Script កែសម្រួលរួចរាល់!* តើចង់ធ្វើអ្វីបន្តទៀត?"
             else:
-                notice = "⚠️ *ការកែសម្រួលមិនទាន់ជោគជ័យ!* អ្នកអាចសាកល្បងម្ដងទៀត:"
+                notice = "⚠️ *ការកែសម្រួលមិនទាន់ជោគជ័យ!* Script ដើមរបស់អ្នកត្រូវបានរក្សាទុកដដែល។ អ្នកអាចសាកល្បងម្ដងទៀត:"
             await query.message.reply_text(
                 notice,
                 parse_mode="Markdown",
@@ -617,6 +699,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         last_topic = context.user_data.get("last_topic")
         last_ct = context.user_data.get("last_content_type", "3whs")
         duration = get_user_duration(chat_id)
+        pace = get_user_pace(chat_id)
         if not last_topic:
             await query.answer("សូមជ្រើសរើស Content Type ជាថ្មី!")
             return
@@ -625,22 +708,26 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         status_msg = await query.message.reply_text(
             f"🔁 *កំពុងបង្កើត {ct['emoji']} {ct['name']} ម្តងទៀត (មុំថ្មី)...*\n"
             f"_ប្រធានបទ: {last_topic}_\n"
-            f"_រយៈពេល: {duration}_"
+            f"_រយៈពេល: {duration}_\n"
+            f"_ល្បឿននិយាយ: {pace:.1f} chars/s_"
         )
         try:
             context.user_data["is_processing"] = True
-            new_response = await ai_service.generate_content_by_type(
+            new_response, plan = await ai_service.generate_content_by_type(
                 content_type=last_ct,
                 topic=last_topic,
                 niche=last_topic,
                 duration=duration,
+                user_pace=pace,
             )
             await safe_edit(status_msg, new_response)
-            if not is_error_response(new_response):
+            if not is_error_response(new_response) and plan is not None:
                 context.user_data["last_script"] = new_response
+                context.user_data["last_script_plan"] = plan
+                context.user_data["last_duration"] = duration
                 notice = f"✅ *{ct['emoji']} {ct['name']} (កំណែថ្មី) រួចរាល់!*"
             else:
-                notice = "⚠️ *ការបង្កើតឡើងវិញមិនទាន់ជោគជ័យ!* អ្នកអាចសាកល្បងម្ដងទៀត:"
+                notice = "⚠️ *ការបង្កើតឡើងវិញមិនទាន់ជោគជ័យ!* Script ដើមត្រូវបានរក្សាទុកដដែល។ អ្នកអាចសាកល្បងម្ដងទៀត:"
             await query.message.reply_text(
                 notice,
                 parse_mode="Markdown",
@@ -682,18 +769,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         try:
             context.user_data["is_processing"] = True
+            pace = get_user_pace(update.effective_chat.id)
             # Generate content with Gemini
-            response = await ai_service.generate_content_by_type(
+            response, plan = await ai_service.generate_content_by_type(
                 content_type=content_type,
                 topic=user_text,
                 niche=user_text,
                 duration=duration,
+                user_pace=pace,
             )
             await safe_edit(status_msg, response)
 
             # Store for refinement buttons only if successful
-            if not is_error_response(response):
+            if not is_error_response(response) and plan is not None:
                 context.user_data["last_script"] = response
+                context.user_data["last_script_plan"] = plan
                 context.user_data["last_topic"] = user_text
                 context.user_data["last_content_type"] = content_type
                 context.user_data["last_duration"] = duration
@@ -776,6 +866,7 @@ def main():
     application.add_handler(CommandHandler("cancel", cancel_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("ideas", ideas_command))
+    application.add_handler(CommandHandler("pace", pace_command))
     application.add_handler(CommandHandler("subscribe", subscribe_command))
     application.add_handler(CommandHandler("unsubscribe", unsubscribe_command))
     application.add_handler(CommandHandler("status", status_command))
