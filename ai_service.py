@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 # In-memory daily ideas cache: "YYYY-MM-DD_category" -> cached_text
 _DAILY_IDEAS_CACHE: Dict[str, str] = {}
 _IDEAS_LOCK = asyncio.Lock()
-REQUEST_TIMEOUT_SECONDS = 45.0
+REQUEST_TIMEOUT_SECONDS = 90.0
 MAX_CONCURRENT_API_CALLS = 5
 _API_SEMAPHORE = asyncio.Semaphore(MAX_CONCURRENT_API_CALLS)
 
@@ -74,7 +74,7 @@ class AIService:
             import google.generativeai as genai_legacy
             genai_legacy.configure(api_key=self.api_key)
             self.client = genai_legacy.GenerativeModel(
-                model_name="gemini-2.0-flash",
+                model_name="gemini-2.5-flash",
                 system_instruction=SYSTEM_INSTRUCTION
             )
             self.sdk_type = "google-generativeai"
@@ -103,6 +103,10 @@ class AIService:
                 "system_instruction": SYSTEM_INSTRUCTION,
                 "temperature": 0.7,
             }
+            try:
+                config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+            except Exception:
+                pass
             if is_json:
                 config_kwargs["response_mime_type"] = "application/json"
             
@@ -146,8 +150,10 @@ class AIService:
                 return "⚠️ សូមបញ្ចូល `GEMINI_API_KEY` នៅក្នុង file `.env` ជាមុនសិន!"
 
         models_to_try = [
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
+            "gemini-2.5-flash",
+            "gemini-flash-latest",
+            "gemini-2.5-flash-lite",
+            "gemini-3.8-flash",
         ]
 
         async with _API_SEMAPHORE:
