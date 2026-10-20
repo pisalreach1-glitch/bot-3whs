@@ -332,32 +332,52 @@ class AIService:
 
                 valid_item_ids = {it.id for it in news_items}
                 valid_refs = referenced_ids.intersection(valid_item_ids)
+                invalid_refs = referenced_ids - valid_item_ids
+
+                # Strict validation: If no valid source IDs were referenced at all, fall back honestly to AI general ideas
+                if not valid_refs:
+                    logger.warning("Gemini generated ideas without valid source references. Falling back to honest AI generation.")
+                    prompt = get_daily_ideas_prompt(cat_clean)
+                    fallback_response = await self.generate_response(prompt, is_json=False)
+                    if self._is_error_response(fallback_response):
+                        return fallback_response
+
+                    honest_header = (
+                        "💡 *គំនិតមាតិកាទូទៅពី AI*\n"
+                        "ℹ️ _(គំនិតទូទៅពី AI - មិនបានផ្ទៀងផ្ទាត់ជាមួយព័ត៌មានថ្មីៗ ដោយសារការយោងប្រភពមិនឆ្លងកាត់ការផ្ទៀងផ្ទាត់)_\n"
+                        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    )
+                    clean_body = fallback_response.replace(
+                        "━━━━━━━━━━━━━━━━━━━━━\n💡 **គំនិតមាតិកាទូទៅពី AI**\nℹ️ _(គំនិតទូទៅពី AI - មិនបានផ្ទៀងផ្ទាត់ជាមួយព័ត៌មានថ្មីៗ)_\n━━━━━━━━━━━━━━━━━━━━━", ""
+                    ).strip()
+                    sources_footnote = "\n\n━━━━━━━━━━━━━━━━━━━━━\n🔗 **បញ្ជីព័ត៌មានថ្មីៗដែលបានទាញយកមកពិនិត្យ៖**\n" + "\n".join(
+                        f"• [{item.publisher}: {item.title}]({item.url})" for item in news_items
+                    )
+                    final_output = honest_header + clean_body + sources_footnote
+                    _DAILY_IDEAS_CACHE[cache_key] = final_output
+                    return final_output
+
+                # If any invalid references were made alongside valid ones, sanitize them
+                cleaned_response = raw_response
+                for inv_id in invalid_refs:
+                    cleaned_response = re.sub(rf"\[{inv_id}\]", "[ប្រភពមិនច្បាស់លាស់]", cleaned_response)
 
                 # Build verified sources block in Python using original validated URLs
-                verified_links = []
-                if valid_refs:
-                    verified_links.append("\n━━━━━━━━━━━━━━━━━━━━━")
-                    verified_links.append("🔗 **ប្រភពព័ត៌មានយោងពិតប្រាកដ (Verified Sources):**")
-                    for item_id in sorted(valid_refs):
-                        item = next(it for it in news_items if it.id == item_id)
-                        pub_str = item.published_at.strftime("%d/%m/%Y") if item.published_at else "មិនបញ្ជាក់កាលបរិច្ឆេទ"
-                        verified_links.append(f"• [{item.id}] [{item.publisher}: {item.title}]({item.url}) — _ចុះផ្សាយ: {pub_str}_")
-                    verified_links.append(f"📅 _កាលបរិច្ឆេទទាញយកទិន្នន័យ (Retrieved): {retrieval_date_str} (Asia/Phnom_Penh)_")
-                    verified_links.append("💡 _(គំនិតខាងលើត្រូវបានបង្កើតផ្អែកលើព័ត៌មានថ្មីៗក្នុងរយៈពេល ៤៨ ម៉ោងចុងក្រោយ មិនមែនជាទិន្នន័យ Trend ផ្ទាល់ពី TikTok/Facebook ឡើយ)_")
-                else:
-                    # If Gemini did not reference valid IDs, list the retrieved sources openly
-                    verified_links.append("\n━━━━━━━━━━━━━━━━━━━━━")
-                    verified_links.append("🔗 **បញ្ជីព័ត៌មានថ្មីៗដែលបានទាញយកមកពិនិត្យ៖**")
-                    for item in news_items:
-                        pub_str = item.published_at.strftime("%d/%m/%Y") if item.published_at else "មិនបញ្ជាក់កាលបរិច្ឆេទ"
-                        verified_links.append(f"• [{item.publisher}: {item.title}]({item.url}) — _ចុះផ្សាយ: {pub_str}_")
-                    verified_links.append(f"📅 _កាលបរិច្ឆេទទាញយកទិន្នន័យ (Retrieved): {retrieval_date_str} (Asia/Phnom_Penh)_")
-                    verified_links.append("💡 _(គំនិតខាងលើត្រូវបានបំផុសចេញពីព័ត៌មានថ្មីៗក្នុងរយៈពេល ៤៨ ម៉ោងចុងក្រោយ មិនមែនជាទិន្នន័យ Trend ផ្ទាល់ពី TikTok/Facebook ឡើយ)_")
+                verified_links = [
+                    "\n━━━━━━━━━━━━━━━━━━━━━",
+                    "🔗 **ប្រភពព័ត៌មានយោងពិតប្រាកដ (Verified Sources):**"
+                ]
+                for item_id in sorted(valid_refs):
+                    item = next(it for it in news_items if it.id == item_id)
+                    pub_str = item.published_at.strftime("%d/%m/%Y") if item.published_at else "មិនបញ្ជាក់កាលបរិច្ឆេទ"
+                    verified_links.append(f"• [{item.id}] [{item.publisher}: {item.title}]({item.url}) — _ចុះផ្សាយ: {pub_str}_")
+                verified_links.append(f"📅 _កាលបរិច្ឆេទទាញយកទិន្នន័យ (Retrieved): {retrieval_date_str} (Asia/Phnom_Penh)_")
+                verified_links.append("💡 _(គំនិតខាងលើត្រូវបានបង្កើតផ្អែកលើព័ត៌មានថ្មីៗក្នុងរយៈពេល ៤៨ ម៉ោងចុងក្រោយ មិនមែនជាទិន្នន័យ Trend ផ្ទាល់ពី TikTok/Facebook ឡើយ)_")
 
                 final_output = (
                     "📰 *គំនិតមាតិកាផ្អែកលើព័ត៌មានថ្មីៗ*\n"
                     "━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    + raw_response.strip()
+                    + cleaned_response.strip()
                     + "\n"
                     + "\n".join(verified_links)
                 )

@@ -154,9 +154,33 @@ async def fetch_single_feed(feed_cfg: dict, client: httpx.AsyncClient, now_utc: 
         logger.warning(f"Error fetching feed {publisher}: {e}")
         return []
 
+CATEGORY_KEYWORDS = {
+    "business": [
+        "business", "market", "economy", "company", "trade", "finance", "invest",
+        "bank", "industry", "startup", "retail", "profit", "revenue", "price",
+        "commercial", "sale", "stock", "dollar", "export", "import", "riel", "gdp"
+    ],
+    "tech": [
+        "tech", "ai", "software", "app", "phone", "digital", "cyber", "google",
+        "apple", "microsoft", "device", "internet", "chip", "startup", "data",
+        "robot", "game", "cloud", "meta", "nvidia", "hardware", "online", "system"
+    ]
+}
+
+def is_item_relevant_to_category(item: NewsItem, target_cat: str) -> bool:
+    """Checks if an item's title matches the target category's keywords."""
+    if target_cat == "general":
+        return True
+    keywords = CATEGORY_KEYWORDS.get(target_cat, [])
+    if not keywords:
+        return True
+    title_lower = item.title.lower()
+    return any(kw in title_lower for kw in keywords)
+
 async def get_fresh_news_sources(category: str = "general", max_items: int = 5) -> List[NewsItem]:
     """
     Retrieves fresh news items published within the last 48 hours.
+    Prioritizes dedicated category feeds and checks relevance.
     Deduplicates by URL and normalized title.
     Caches results for 1 hour to save network & quota.
     """
@@ -177,34 +201,55 @@ async def get_fresh_news_sources(category: str = "general", max_items: int = 5) 
                 logger.info(f"Reusing cached feed items for '{target_cat}' ({len(cached_items)} items)")
                 return cached_items[:max_items]
 
-        # Select feeds for this category
-        selected_feeds = [f for f in CONFIGURED_FEEDS if f["category"] == target_cat]
-        if not selected_feeds or target_cat != "general":
-            # Include general feeds as fallback
-            selected_feeds += [f for f in CONFIGURED_FEEDS if f["category"] == "general"]
+        # Select feeds strictly matching the requested category
+        category_feeds = [f for f in CONFIGURED_FEEDS if f["category"] == target_cat]
+        general_feeds = [f for f in CONFIGURED_FEEDS if f["category"] == "general"]
 
         all_items: List[NewsItem] = []
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) 3WHsBot/2.0"
         }
         async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
-            tasks = [fetch_single_feed(cfg, client, now_utc) for cfg in selected_feeds]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for res in results:
-                if isinstance(res, list):
-                    all_items.extend(res)
+            # 1. Fetch category feeds first
+            if category_feeds:
+                tasks = [fetch_single_feed(cfg, client, now_utc) for cfg in category_feeds]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for res in results:
+                    if isinstance(res, list):
+                        all_items.extend(res)
+
+            # 2. If target is general, or if category feeds returned very few items, fetch general feeds
+            if target_cat == "general" or len(all_items) < max_items:
+                tasks = [fetch_single_feed(cfg, client, now_utc) for cfg in general_feeds]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for res in results:
+                    if isinstance(res, list):
+                        # Filter general feed items for category relevance
+                        for item in res:
+                            if is_item_relevant_to_category(item, target_cat):
+                                all_items.append(item)
 
         # Deduplicate by URL and normalized title
         seen_urls = set()
         seen_titles = set()
         deduped: List[NewsItem] = []
 
-        # Sort so that verified recent items (within 48h) come first
-        all_items.sort(key=lambda x: (x.is_recent, x.published_at or datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
+        # Sort: verified recent items (<48h) first, with category feed items prioritized
+        all_items.sort(
+            key=lambda x: (
+                x.is_recent,
+                is_item_relevant_to_category(x, target_cat),
+                x.published_at or datetime.min.replace(tzinfo=timezone.utc)
+            ),
+            reverse=True
+        )
 
         for item in all_items:
-            # We strictly require recent items for fresh news claims
             if not item.is_recent:
+                continue
+
+            # Ensure relevance for specialized categories
+            if target_cat != "general" and not is_item_relevant_to_category(item, target_cat):
                 continue
 
             norm_t = normalize_title(item.title)
@@ -223,7 +268,7 @@ async def get_fresh_news_sources(category: str = "general", max_items: int = 5) 
         if final_items:
             _FEED_CACHE[target_cat] = (now_utc, final_items)
 
-        logger.info(f"Retrieved {len(final_items)} fresh news items for category '{target_cat}'")
+        logger.info(f"Retrieved {len(final_items)} relevant fresh news items for category '{target_cat}'")
         return final_items
 
 def clear_feed_cache():
