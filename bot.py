@@ -1,10 +1,13 @@
 import os
 import sys
 import json
+import math
 import logging
+import asyncio
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import time
+from typing import Optional
 import pytz
 from dotenv import load_dotenv
 
@@ -26,6 +29,11 @@ from telegram.ext import (
     filters,
 )
 from ai_service import AIService
+from script_models import (
+    PlanResult,
+    count_khmer_dialogue_units,
+    DEFAULT_CHARS_PER_SECOND,
+)
 
 load_dotenv()
 
@@ -58,7 +66,7 @@ def start_health_check_server():
         port = int(port_str)
         server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
-        logger.info(f"Health check server on port {port}")
+        logger.info(f"Health check server running on port {port}")
     except Exception as e:
         logger.error(f"Health check server error: {e}")
 
@@ -195,11 +203,9 @@ def set_user_duration(chat_id: int, duration: str):
     user_settings[str_id]["duration"] = duration
     save_user_settings_to_file(user_settings)
 
-DEFAULT_PACE = 10.0  # Default ~10 Khmer characters/syllable units per second
-
 def get_user_pace(chat_id: int) -> float:
     cfg = user_settings.get(str(chat_id), {})
-    return float(cfg.get("pace", DEFAULT_PACE))
+    return float(cfg.get("pace", DEFAULT_CHARS_PER_SECOND))
 
 def set_user_pace(chat_id: int, pace: float):
     str_id = str(chat_id)
@@ -227,7 +233,7 @@ def save_subscribers(subs: set):
 subscribers = load_subscribers()
 
 # ─────────────────────────────────────────────
-# Helpers
+# Helpers & Message Utilities
 # ─────────────────────────────────────────────
 def split_message(text: str, max_length: int = 4000) -> list[str]:
     if len(text) <= max_length:
@@ -246,9 +252,7 @@ def split_message(text: str, max_length: int = 4000) -> list[str]:
 
 async def safe_reply(target, text: str, reply_markup=None):
     chunks = split_message(text)
-    msg_target = (
-        target.message if hasattr(target, "message") and target.message else target
-    )
+    msg_target = target.message if hasattr(target, "message") and target.message else target
     for i, chunk in enumerate(chunks):
         markup = reply_markup if i == len(chunks) - 1 else None
         try:
@@ -264,21 +268,38 @@ async def safe_edit(status_msg, text: str):
         try:
             await status_msg.edit_text(chunks[0])
         except Exception as e:
-            logger.error(f"Failed to edit: {e}")
+            logger.error(f"Failed to edit status message: {e}")
     for chunk in chunks[1:]:
         try:
             await status_msg.reply_text(chunk, parse_mode="Markdown")
         except Exception:
             await status_msg.reply_text(chunk)
 
-def is_error_response(text: str) -> bool:
-    if not text:
-        return True
-    s = text.strip()
-    return s.startswith("⚠️") or s.startswith("❌") or "Error:" in s
+def acquire_user_request(context: ContextTypes.DEFAULT_TYPE) -> Optional[int]:
+    """
+    Acquires request concurrency lock for user before the first await.
+    Returns request token if acquired, None if another request is in flight.
+    """
+    if context.user_data.get("is_processing"):
+        return None
+    token = context.user_data.get("req_token", 0) + 1
+    context.user_data["req_token"] = token
+    context.user_data["is_processing"] = True
+    context.user_data["active_task"] = asyncio.current_task()
+    return token
+
+def is_request_current(context: ContextTypes.DEFAULT_TYPE, token: int) -> bool:
+    """Checks if the request token is still active (not cancelled or superseded)."""
+    return context.user_data.get("req_token") == token
+
+def release_user_request(context: ContextTypes.DEFAULT_TYPE, token: int):
+    """Safely releases processing state only if current token matches."""
+    if context.user_data.get("req_token") == token:
+        context.user_data["is_processing"] = False
+        context.user_data["active_task"] = None
 
 # ─────────────────────────────────────────────
-# Keyboards (Option 2 - Direct to Content Formats)
+# Keyboards
 # ─────────────────────────────────────────────
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     """Main Menu showing all 6 Content Formats directly."""
@@ -286,7 +307,6 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(f"{ct['emoji']} {ct['name']}", callback_data=f"ctype:{cid}")]
         for cid, ct in CONTENT_TYPES.items()
     ]
-    # Extra quick utilities
     keyboard.append([
         InlineKeyboardButton("💡 គំនិត Content (Ideas)", callback_data="ideas"),
         InlineKeyboardButton("⚙️ រយៈពេលវីដេអូ", callback_data="settings"),
@@ -365,9 +385,16 @@ def render_settings(chat_id: int) -> str:
 # Command Handlers
 # ─────────────────────────────────────────────
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Directly shows the Main Content Format Menu."""
+    """Directly shows the Main Content Format Menu. Cancels pending active generation."""
+    active_task = context.user_data.get("active_task")
+    if active_task and not active_task.done():
+        active_task.cancel()
+
+    context.user_data["req_token"] = context.user_data.get("req_token", 0) + 1
     context.user_data["state"] = None
     context.user_data["is_processing"] = False
+    context.user_data["active_task"] = None
+
     chat_id = update.effective_chat.id
     msg = render_welcome(chat_id)
     keyboard = get_main_menu_keyboard()
@@ -381,12 +408,24 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await target.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Cancels any pending action and returns to main menu."""
+    """
+    Cancels any pending action or active AI generation task.
+    Preserves last successful script and metadata.
+    """
+    active_task = context.user_data.get("active_task")
+    if active_task and not active_task.done():
+        active_task.cancel()
+
+    # Invalidate current request token so stale results will not be sent
+    context.user_data["req_token"] = context.user_data.get("req_token", 0) + 1
     context.user_data["state"] = None
     context.user_data["is_processing"] = False
+    context.user_data["active_task"] = None
+
     chat_id = update.effective_chat.id
     msg = (
-        "🚫 *បានបោះបង់សំណើជោគជ័យ!* ត្រឡប់ទៅកាន់ Menu ដើមវិញ។\n\n"
+        "🚫 *បានបោះបង់សំណើជោគជ័យ!* ត្រឡប់ទៅកាន់ Menu ដើមវិញ។\n"
+        "_(Script ជោគជ័យចុងក្រោយរបស់អ្នកត្រូវបានរក្សាទុកដដែល)_\n\n"
         + render_welcome(chat_id)
     )
     keyboard = get_main_menu_keyboard()
@@ -412,22 +451,27 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ideas_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = update.message if update.message else update.callback_query.message
-    if context.user_data.get("is_processing"):
-        await safe_reply(target, "⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!")
+    token = acquire_user_request(context)
+    if token is None:
+        await safe_reply(target, "⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត ឬប្រើ /cancel ដើម្បីបោះបង់!")
         return
+
     category = " ".join(context.args).strip() if (context.args and len(context.args) > 0) else "ទូទៅ"
     status_msg = await target.reply_text("💡 *កំពុងស្វែងរកព័ត៌មានថ្មីៗ និងរៀបចំគំនិតមាតិកា...*")
     try:
-        context.user_data["is_processing"] = True
         response = await ai_service.generate_daily_ideas(category)
+        if not is_request_current(context, token):
+            return  # Stale or cancelled request
         await safe_edit(status_msg, response)
         await target.reply_text(
             "✅ *គំនិតខាងលើ!* តើអ្នកចង់ជ្រើស Format ណាមួយដើម្បីបង្កើត Script?",
             parse_mode="Markdown",
             reply_markup=get_done_keyboard()
         )
+    except asyncio.CancelledError:
+        logger.info("ideas_command was cancelled")
     finally:
-        context.user_data["is_processing"] = False
+        release_user_request(context, token)
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -456,6 +500,7 @@ async def pace_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Calibrates user speaking pace without calling AI.
     Usage: /pace <seconds> <Khmer sample text>
+    Validates finite positive seconds and sample length. Avoids silent clamping.
     """
     chat_id = update.effective_chat.id
     target = update.message if update.message else (update.callback_query.message if update.callback_query else None)
@@ -470,7 +515,7 @@ async def pace_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👉 *របៀបវាយបញ្ជា៖*\n"
             "`/pace <ចំនួនវិនាទី> <អត្ថបទដែលអ្នកបានអាន>`\n\n"
             "_ឧទាហរណ៍៖ (ប្រសិនបើអ្នកអានអត្ថបទខាងលើចំណាយពេល 10 វិនាទី)_\n"
-            "`/pace 10 សួស្តីអ្នកទាំងអស់គ្នា ថ្ងៃនេះខ្ញុំមានគន្លឹះពិសេសមួយចង់ចែករំលែក`\n"
+            "`/pace 10 សួស្តីអ្នកទាំងអស់គ្នា ថ្ងៃនេះខ្ញុំមានគន្លឹះពិសេសមួយចង់ចែករំលែក...`\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "💡 _Bot នឹងគណនាល្បឿននិយាយរបស់អ្នក (តួអក្សរ/វិនាទី) ដើម្បីប៉ាន់ស្មានពេលវេលា Script ឱ្យកាន់តែសមស្រប!_"
         )
@@ -480,36 +525,48 @@ async def pace_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sec_str = context.args[0].strip()
     try:
         seconds = float(sec_str)
-        if seconds <= 0 or seconds > 600:
-            await safe_reply(target, "⚠️ សូមបញ្ចូលចំនួនវិនាទីវិជ្ជមានចន្លោះពី 1 ដល់ 600 វិនាទី។")
+        if not math.isfinite(seconds) or math.isnan(seconds):
+            await safe_reply(target, "⚠️ ចំនួនវិនាទីមិនត្រឹមត្រូវឡើយ (NaN ឬ Infinity ត្រូវបានបដិសេធ)។")
+            return
+        if seconds < 2.0 or seconds > 300.0:
+            await safe_reply(target, "⚠️ សូមបញ្ចូលចំនួនវិនាទីជាក់ស្តែងចន្លោះពី 2 ដល់ 300 វិនាទី។")
             return
     except ValueError:
         await safe_reply(target, "⚠️ ចំនួនវិនាទីមិនត្រឹមត្រូវឡើយ។ ឧទាហរណ៍៖ `/pace 12 អត្ថបទ...`")
         return
 
     sample_text = " ".join(context.args[1:]).strip()
-    from script_models import count_khmer_dialogue_units
     units = count_khmer_dialogue_units(sample_text)
-    if units < 5:
-        await safe_reply(target, "⚠️ អត្ថបទខ្លីពេកក្នុងការវាស់វែង សូមបញ្ចូលអត្ថបទគំរូយ៉ាងតិចពីរបីឃ្លា។")
+    if units < 10:
+        await safe_reply(target, "⚠️ អត្ថបទខ្លីពេកក្នុងការវាស់វែង (រាប់បានត្រឹមតិចជាង 10 តួអក្សរ)។ សូមបញ្ចូលអត្ថបទគំរូពេញលេញយ៉ាងតិចពីរបីឃ្លា។")
         return
 
     calculated_pace = round(units / seconds, 2)
-    # Reasonable bounds: 3.0 to 25.0 chars/sec
+    # Check realistic speaking bounds without silent deceptive clamping
     if calculated_pace < 3.0:
-        calculated_pace = 3.0
-    elif calculated_pace > 25.0:
-        calculated_pace = 25.0
+        await safe_reply(
+            target,
+            f"⚠️ ល្បឿនគណនាបានយឺតខ្លាំងខុសធម្មតា ({calculated_pace:.1f} តួអក្សរ/s)។ "
+            "សូមសាកល្បងអានម្ដងទៀតដោយប្រើល្បឿននិយាយសន្ទនាធម្មតា (conversational pace)។"
+        )
+        return
+    if calculated_pace > 25.0:
+        await safe_reply(
+            target,
+            f"⚠️ ល្បឿនគណនាបានលឿនខ្លាំងខុសធម្មតា ({calculated_pace:.1f} តួអក្សរ/s)។ "
+            "សូមពិនិត្យមើលចំនួនវិនាទីដែលអ្នកបានកំណត់ ឬសាកល្បងអានអត្ថបទវែងជាងនេះបន្តិច។"
+        )
+        return
 
     set_user_pace(chat_id, calculated_pace)
     success_msg = (
         "✅ *បានកំណត់ល្បឿននិយាយផ្ទាល់ខ្លួនជោគជ័យ!* 🎉\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         f"• ⏱️ រយៈពេលអាន៖ *{seconds:.1f} វិនាទី*\n"
-        f"• 📏 ចំនួនតួអក្សរ/ព្យាង្គរាប់បាន៖ *{units}*\n"
-        f"• 🎙️ ល្បឿនគណនាបាន៖ *{calculated_pace:.1f} តួអក្សរ/វិនាទី*\n"
+        f"• 📏 ចំនួនតួអក្សររាប់បាន៖ *{units} តួអក្សរ*\n"
+        f"• 🎙️ ល្បឿនគណនាជាក់ស្តែង៖ *{calculated_pace:.1f} តួអក្សរ/វិនាទី*\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 _ចំណាំ៖ រយៈពេលនិយាយក្នុង Script គឺសម្រាប់តែការប៉ាន់ស្មានប៉ុណ្ណោះ។ "
+        "💡 _ចំណាំ៖ រយៈពេលនិយាយក្នុង Script គឺសម្រាប់តែការប៉ាន់ស្មានប្រហាក់ប្រហែលប៉ុណ្ណោះ។ "
         "ល្បឿននិយាយជាក់ស្តែងនៅពេលថតអាចប្រែប្រួលតាមអារម្មណ៍ ការសង្កត់សំឡេង និងការផ្អាក (pauses)។_"
     )
     await safe_reply(target, success_msg)
@@ -592,22 +649,26 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 
     # ── Ideas Button ──────────────────────────
     elif data == "ideas":
-        if context.user_data.get("is_processing"):
+        token = acquire_user_request(context)
+        if token is None:
             await query.answer("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!", show_alert=True)
             return
         await query.answer("💡 កំពុងរៀបចំគំនិត...")
         status_msg = await query.message.reply_text("💡 *កំពុងស្វែងរកព័ត៌មានថ្មីៗ និងរៀបចំគំនិតមាតិកា...*")
         try:
-            context.user_data["is_processing"] = True
             response = await ai_service.generate_daily_ideas("ទូទៅ")
+            if not is_request_current(context, token):
+                return
             await safe_edit(status_msg, response)
             await query.message.reply_text(
                 "✅ *គំនិតខាងលើ!* ចង់ជ្រើស Format ណាមួយដើម្បីផលិត Script?",
                 parse_mode="Markdown",
                 reply_markup=get_done_keyboard()
             )
+        except asyncio.CancelledError:
+            logger.info("ideas callback cancelled")
         finally:
-            context.user_data["is_processing"] = False
+            release_user_request(context, token)
 
     # ── Settings Button ───────────────────────
     elif data == "settings":
@@ -624,7 +685,6 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         dur = data.split(":", 1)[1]
         set_user_duration(chat_id, dur)
         await query.answer(f"✅ បានកំណត់រយៈពេល {dur}")
-        # Return to main menu with updated duration
         msg = render_welcome(chat_id)
         keyboard = get_main_menu_keyboard()
         try:
@@ -641,30 +701,32 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         await query.answer()
         await status_command(update, context)
 
-    # Anti-spam guard: if an AI request is in-flight, reject extra clicks on AI buttons
-    if context.user_data.get("is_processing") and (data.startswith("refine:") or data == "ideas"):
-        await query.answer("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!", show_alert=True)
-        return
-
     # ── Refine: Change Hook ───────────────────
     elif data == "refine:hook":
         last_script = context.user_data.get("last_script")
         if not last_script:
             await query.answer("មិនមាន Script មុនដើម្បីកែប្រែទេ!")
             return
+        token = acquire_user_request(context)
+        if token is None:
+            await query.answer("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!", show_alert=True)
+            return
         await query.answer("🎣 កំពុងបង្កើត Hook ថ្មី...")
         status_msg = await query.message.reply_text("🎣 *កំពុងបង្កើតជម្រើស Hook ថ្មីទាំង ៣ បែប...*")
         try:
-            context.user_data["is_processing"] = True
             hook_response = await ai_service.refine_hook(last_script)
+            if not is_request_current(context, token):
+                return
             await safe_edit(status_msg, hook_response)
             await query.message.reply_text(
                 "💡 *អ្នកអាចជ្រើស Hook ខាងលើទៅជំនួសបាន!* Script ដើមរបស់អ្នកនៅតែត្រូវបានរក្សាទុកដដែល។ តើចង់កែអ្វីបន្តទៀត?",
                 parse_mode="Markdown",
                 reply_markup=get_done_keyboard()
             )
+        except asyncio.CancelledError:
+            logger.info("refine:hook cancelled")
         finally:
-            context.user_data["is_processing"] = False
+            release_user_request(context, token)
 
     # ── Refine: Shorten ───────────────────────
     elif data == "refine:shorten":
@@ -672,17 +734,22 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         if not last_script:
             await query.answer("មិនមាន Script មុនដើម្បីកែប្រែទេ!")
             return
+        token = acquire_user_request(context)
+        if token is None:
+            await query.answer("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!", show_alert=True)
+            return
         await query.answer("✂️ កំពុងសង្ខេបឱ្យខ្លី...")
         status_msg = await query.message.reply_text("✂️ *កំពុងកែសម្រួលឱ្យខ្លី ខ្លឹម និង Fast-paced ជាងមុន...*")
         try:
-            context.user_data["is_processing"] = True
             dur = context.user_data.get("last_duration", get_user_duration(chat_id))
             pace = get_user_pace(chat_id)
-            short_response, plan = await ai_service.refine_shorten(last_script, dur, pace)
-            await safe_edit(status_msg, short_response)
-            if not is_error_response(short_response) and plan is not None:
-                context.user_data["last_script"] = short_response
-                context.user_data["last_script_plan"] = plan
+            plan_result: PlanResult = await ai_service.refine_shorten(last_script, dur, pace)
+            if not is_request_current(context, token):
+                return
+            await safe_edit(status_msg, plan_result.formatted_text)
+            if plan_result.success and plan_result.plan is not None:
+                context.user_data["last_script"] = plan_result.formatted_text
+                context.user_data["last_script_plan"] = plan_result.plan
                 notice = "✅ *Script កែសម្រួលរួចរាល់!* តើចង់ធ្វើអ្វីបន្តទៀត?"
             else:
                 notice = "⚠️ *ការកែសម្រួលមិនទាន់ជោគជ័យ!* Script ដើមរបស់អ្នកត្រូវបានរក្សាទុកដដែល។ អ្នកអាចសាកល្បងម្ដងទៀត:"
@@ -691,8 +758,10 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                 parse_mode="Markdown",
                 reply_markup=get_done_keyboard()
             )
+        except asyncio.CancelledError:
+            logger.info("refine:shorten cancelled")
         finally:
-            context.user_data["is_processing"] = False
+            release_user_request(context, token)
 
     # ── Refine: Regenerate ────────────────────
     elif data == "refine:regen":
@@ -703,6 +772,10 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         if not last_topic:
             await query.answer("សូមជ្រើសរើស Content Type ជាថ្មី!")
             return
+        token = acquire_user_request(context)
+        if token is None:
+            await query.answer("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!", show_alert=True)
+            return
         ct = CONTENT_TYPES.get(last_ct, CONTENT_TYPES["3whs"])
         await query.answer("🔁 កំពុងបង្កើតម្ដងទៀត...")
         status_msg = await query.message.reply_text(
@@ -712,18 +785,19 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             f"_ល្បឿននិយាយ: {pace:.1f} chars/s_"
         )
         try:
-            context.user_data["is_processing"] = True
-            new_response, plan = await ai_service.generate_content_by_type(
+            plan_result: PlanResult = await ai_service.generate_content_by_type(
                 content_type=last_ct,
                 topic=last_topic,
                 niche=last_topic,
                 duration=duration,
                 user_pace=pace,
             )
-            await safe_edit(status_msg, new_response)
-            if not is_error_response(new_response) and plan is not None:
-                context.user_data["last_script"] = new_response
-                context.user_data["last_script_plan"] = plan
+            if not is_request_current(context, token):
+                return
+            await safe_edit(status_msg, plan_result.formatted_text)
+            if plan_result.success and plan_result.plan is not None:
+                context.user_data["last_script"] = plan_result.formatted_text
+                context.user_data["last_script_plan"] = plan_result.plan
                 context.user_data["last_duration"] = duration
                 notice = f"✅ *{ct['emoji']} {ct['name']} (កំណែថ្មី) រួចរាល់!*"
             else:
@@ -733,8 +807,10 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                 parse_mode="Markdown",
                 reply_markup=get_done_keyboard()
             )
+        except asyncio.CancelledError:
+            logger.info("refine:regen cancelled")
         finally:
-            context.user_data["is_processing"] = False
+            release_user_request(context, token)
 
 # ─────────────────────────────────────────────
 # Message Handler (State Machine)
@@ -748,18 +824,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── STATE: Awaiting user's topic for chosen format ──
     if state == "awaiting_topic":
-        if context.user_data.get("is_processing"):
-            await update.message.reply_text("⏳ Bot កំពុងគិត និងសរសេរ Script... សូមរង់ចាំមួយភ្លែត!")
+        token = acquire_user_request(context)
+        if token is None:
+            await update.message.reply_text("⏳ Bot កំពុងគិត និងសរសេរ Script... សូមរង់ចាំមួយភ្លែត ឬប្រើ /cancel ដើម្បីបោះបង់!")
             return
 
         content_type = context.user_data.get("content_type", "3whs")
         duration = get_user_duration(update.effective_chat.id)
         ct = CONTENT_TYPES.get(content_type, CONTENT_TYPES["3whs"])
 
-        # Clear state
+        # Clear awaiting state
         context.user_data["state"] = None
 
-        # Show generating status
         status_msg = await update.message.reply_text(
             f"⏳ *កំពុងបង្កើត {ct['emoji']} {ct['name']}...*\n"
             f"_ប្រធានបទ/វិស័យ: {user_text}_\n"
@@ -768,50 +844,59 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         try:
-            context.user_data["is_processing"] = True
             pace = get_user_pace(update.effective_chat.id)
-            # Generate content with Gemini
-            response, plan = await ai_service.generate_content_by_type(
+            plan_result: PlanResult = await ai_service.generate_content_by_type(
                 content_type=content_type,
                 topic=user_text,
                 niche=user_text,
                 duration=duration,
                 user_pace=pace,
             )
-            await safe_edit(status_msg, response)
+            if not is_request_current(context, token):
+                return
+            await safe_edit(status_msg, plan_result.formatted_text)
 
-            # Store for refinement buttons only if successful
-            if not is_error_response(response) and plan is not None:
-                context.user_data["last_script"] = response
-                context.user_data["last_script_plan"] = plan
+            # Store for refinement buttons ONLY if entire plan passed strict validation
+            if plan_result.success and plan_result.plan is not None:
+                context.user_data["last_script"] = plan_result.formatted_text
+                context.user_data["last_script_plan"] = plan_result.plan
                 context.user_data["last_topic"] = user_text
                 context.user_data["last_content_type"] = content_type
                 context.user_data["last_duration"] = duration
                 notice = f"✅ *{ct['emoji']} {ct['name']} រួចរាល់!*\nតើអ្នកចង់កែសម្រួល ឬផលិត Content អ្វីបន្តទៀត?"
             else:
-                notice = "⚠️ *ការបង្កើតមិនទាន់ជោគជ័យពេញលេញទេ!*\nអ្នកអាចចុច [🔁 បង្កើតម្ដងទៀត] ដើម្បីសាកល្បងម្ដងទៀត។"
+                notice = (
+                    "⚠️ *ការបង្កើតមិនទាន់ជោគជ័យពេញលេញទេ!*\n"
+                    "Script មុនរបស់អ្នក (ប្រសិនបើមាន) នៅតែត្រូវបានរក្សាទុកដដែល។ "
+                    "អ្នកអាចចុច [🔁 បង្កើតម្ដងទៀត] ដើម្បីសាកល្បងម្ដងទៀត។"
+                )
 
-            # Show quick action buttons after done
             await update.message.reply_text(
                 notice,
                 parse_mode="Markdown",
                 reply_markup=get_done_keyboard()
             )
+        except asyncio.CancelledError:
+            logger.info("Script generation was cancelled")
         finally:
-            context.user_data["is_processing"] = False
+            release_user_request(context, token)
 
     # ── Default: Free-text AI chat ────────────
     else:
-        if context.user_data.get("is_processing"):
+        token = acquire_user_request(context)
+        if token is None:
             await update.message.reply_text("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!")
             return
         try:
-            context.user_data["is_processing"] = True
             await update.message.chat.send_action("typing")
             response = await ai_service.chat(user_text)
+            if not is_request_current(context, token):
+                return
             await safe_reply(update.message, response)
+        except asyncio.CancelledError:
+            logger.info("Chat response was cancelled")
         finally:
-            context.user_data["is_processing"] = False
+            release_user_request(context, token)
 
 # ─────────────────────────────────────────────
 # Daily Scheduler Broadcast
@@ -821,9 +906,9 @@ async def send_daily_content(context: ContextTypes.DEFAULT_TYPE):
     if not subscribers:
         return
     try:
-        # Generate ideas ONCE for all subscribers to save Quota
+        # Generate ideas ONCE for all subscribers to save quota
         content = await ai_service.generate_daily_ideas("ទូទៅ")
-        if is_error_response(content):
+        if not content or content.startswith("⚠️") or content.startswith("❌"):
             logger.warning("Daily broadcast generated an error response, aborting broadcast.")
             return
 
@@ -859,7 +944,8 @@ def main():
         return
 
     start_health_check_server()
-    application = ApplicationBuilder().token(token).build()
+    # concurrent_updates(True) allows /cancel and other updates while I/O is pending
+    application = ApplicationBuilder().token(token).concurrent_updates(True).build()
 
     # Commands
     application.add_handler(CommandHandler("start", start_command))
@@ -875,7 +961,7 @@ def main():
     application.add_handler(CallbackQueryHandler(button_callback_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Daily scheduler
+    # Daily scheduler with JobQueue verification
     daily_time_str = os.getenv("DAILY_TIME", "08:00")
     timezone_str = os.getenv("TIMEZONE", "Asia/Phnom_Penh")
     try:
@@ -884,7 +970,14 @@ def main():
         scheduled_time = time(hour=hour, minute=minute, tzinfo=tz)
         if application.job_queue:
             application.job_queue.run_daily(send_daily_content, time=scheduled_time)
-            logger.info(f"Daily job at {daily_time_str} ({timezone_str})")
+            logger.info(f"Daily job scheduled at {daily_time_str} ({timezone_str})")
+        else:
+            logger.error(
+                "CRITICAL: JobQueue is NOT available on this Telegram Application. "
+                "Daily scheduled broadcasts will NOT run! "
+                "Ensure python-telegram-bot is installed with job-queue extra: "
+                "pip install \"python-telegram-bot[job-queue]\""
+            )
     except Exception as e:
         logger.error(f"Scheduler error: {e}")
 

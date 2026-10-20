@@ -12,7 +12,9 @@ from trend_sources import get_fresh_news_sources, NewsItem
 from script_models import (
     Scene,
     ScriptPlan,
+    PlanResult,
     parse_duration_seconds,
+    validate_and_build_plan,
     parse_and_validate_script_plan,
     format_script_for_telegram,
     DEFAULT_CHARS_PER_SECOND,
@@ -39,6 +41,8 @@ logger = logging.getLogger(__name__)
 _DAILY_IDEAS_CACHE: Dict[str, str] = {}
 _IDEAS_LOCK = asyncio.Lock()
 REQUEST_TIMEOUT_SECONDS = 45.0
+MAX_CONCURRENT_API_CALLS = 5
+_API_SEMAPHORE = asyncio.Semaphore(MAX_CONCURRENT_API_CALLS)
 
 def clear_daily_ideas_cache():
     """Clear cached daily ideas (useful for testing)."""
@@ -91,74 +95,48 @@ class AIService:
             "last_status": getattr(self, "last_api_status", "ធម្មតា"),
         }
 
-    def _generate_sync(self, prompt: str, is_json: bool = False) -> str:
-        models_to_try = [
-            "gemini-2.5-flash",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
-        ]
-
-        errors = []
-        for model_name in models_to_try:
-            try:
-                if self.sdk_type == "google-genai":
-                    from google.genai import types
-                    config_kwargs = {
-                        "system_instruction": SYSTEM_INSTRUCTION,
-                        "temperature": 0.7,
-                    }
-                    if is_json:
-                        config_kwargs["response_mime_type"] = "application/json"
-                    
-                    response = self.client.models.generate_content(
-                        model=model_name,
-                        contents=prompt,
-                        config=types.GenerateContentConfig(**config_kwargs)
-                    )
-                    if response and response.text:
-                        self.last_api_status = "🟢 ដំណើរការល្អ (Online)"
-                        return response.text
-                elif self.sdk_type == "google-generativeai":
-                    import google.generativeai as genai_legacy
-                    gen_config = {}
-                    if is_json:
-                        gen_config["response_mime_type"] = "application/json"
-                    model = genai_legacy.GenerativeModel(
-                        model_name=model_name,
-                        system_instruction=SYSTEM_INSTRUCTION,
-                        generation_config=gen_config if gen_config else None
-                    )
-                    response = model.generate_content(prompt)
-                    if response and response.text:
-                        self.last_api_status = "🟢 ដំណើរការល្អ (Online)"
-                        return response.text
-            except Exception as e:
-                err_str = str(e)
-                logger.warning(f"Model {model_name} failed: {err_str}")
-                errors.append(f"{model_name}: {err_str}")
-                continue
-
-        # Check if any errors were quota related
-        all_err_str = " ".join(errors).lower()
-        if "429" in all_err_str or "quota" in all_err_str or "exhausted" in all_err_str:
-            self.last_api_status = "⚠️ Quota Limit"
-            return (
-                "⚠️ **ប្រព័ន្ធ AI ទទួលសំណើច្រើន ឬដល់កម្រិតកំណត់បណ្ដោះអាសន្ន (Quota Limit)**\n\n"
-                "Google Gemini Free Tier កំពុងរង់ចាំ Reset សំណើបន្តិច។\n"
-                "👉 សូមរង់ចាំមួយស្របក់ រួចចុចប៊ូតុង **[🔁 បង្កើតម្ដងទៀត]** នោះវានឹងដំណើរការវិញជាធម្មតា!"
+    async def _generate_with_model(self, model_name: str, prompt: str, is_json: bool = False) -> str:
+        """Native async SDK generation call without thread-offload leaks."""
+        if self.sdk_type == "google-genai":
+            from google.genai import types
+            config_kwargs = {
+                "system_instruction": SYSTEM_INSTRUCTION,
+                "temperature": 0.7,
+            }
+            if is_json:
+                config_kwargs["response_mime_type"] = "application/json"
+            
+            response = await self.client.aio.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(**config_kwargs)
             )
+            if response and response.text:
+                return response.text
+            raise ValueError(f"Empty response text from {model_name}")
 
-        self.last_api_status = f"🔴 Error: {errors[-1][:50] if errors else 'Unknown'}"
-        return (
-            f"❌ **AI មិនទាន់អាចឆ្លើយតបបាននៅពេលនេះ**\n\n"
-            f"មូលហេតុ: {errors[-1] if errors else 'High Demand'}\n\n"
-            "🔄 _សូមចុចប៊ូតុង [🔁 បង្កើតម្ដងទៀត] ក្នុងរយៈពេលខ្លីខាងមុខ!_"
-        )
+        elif self.sdk_type == "google-generativeai":
+            import google.generativeai as genai_legacy
+            gen_config = {}
+            if is_json:
+                gen_config["response_mime_type"] = "application/json"
+            model = genai_legacy.GenerativeModel(
+                model_name=model_name,
+                system_instruction=SYSTEM_INSTRUCTION,
+                generation_config=gen_config if gen_config else None
+            )
+            response = await model.generate_content_async(prompt)
+            if response and response.text:
+                return response.text
+            raise ValueError(f"Empty response text from {model_name}")
+
+        else:
+            raise RuntimeError("No Gemini SDK configured")
 
     async def generate_response(self, prompt: str, is_json: bool = False) -> str:
         """
-        Generate response asynchronously in a separate thread with a timeout 
-        so it does not block the Telegram event loop.
+        Generates response using native async SDK with bounded concurrency and transport timeout.
+        Does not continue through fallback models if timeout or cancellation occurs.
         """
         if not self.is_configured():
             self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
@@ -167,14 +145,52 @@ class AIService:
                 self.last_api_status = "🔴 ខ្វះ API Key"
                 return "⚠️ សូមបញ្ចូល `GEMINI_API_KEY` នៅក្នុង file `.env` ជាមុនសិន!"
 
-        try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(self._generate_sync, prompt, is_json),
-                timeout=REQUEST_TIMEOUT_SECONDS
+        models_to_try = [
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+        ]
+
+        async with _API_SEMAPHORE:
+            errors = []
+            for model_name in models_to_try:
+                try:
+                    text = await asyncio.wait_for(
+                        self._generate_with_model(model_name, prompt, is_json),
+                        timeout=REQUEST_TIMEOUT_SECONDS
+                    )
+                    self.last_api_status = "🟢 ដំណើរការល្អ (Online)"
+                    return text
+                except asyncio.CancelledError:
+                    logger.info(f"API request was cancelled during {model_name}")
+                    raise
+                except asyncio.TimeoutError:
+                    logger.warning(f"Timeout on model {model_name}. Halting fallback to save quota.")
+                    self.last_api_status = "⚠️ Request Timeout"
+                    return (
+                        "⚠️ **សំណើចំណាយពេលយូរពេក (Request Timeout)**\n\n"
+                        "ប្រព័ន្ធ AI មិនបានឆ្លើយតបទាន់ពេលវេលាឡើយ។\n"
+                        "សូមចុច [🔁 បង្កើតម្ដងទៀត] ដើម្បីសាកល្បងឡើងវិញ។"
+                    )
+                except Exception as e:
+                    err_str = str(e)
+                    logger.warning(f"Model {model_name} failed: {err_str}")
+                    errors.append(f"{model_name}: {err_str}")
+                    if "429" in err_str.lower() or "quota" in err_str.lower() or "exhausted" in err_str.lower():
+                        self.last_api_status = "⚠️ Quota Limit"
+                        return (
+                            "⚠️ **ប្រព័ន្ធ AI ទទួលសំណើច្រើន ឬដល់កម្រិតកំណត់បណ្ដោះអាសន្ន (Quota Limit)**\n\n"
+                            "Google Gemini Free Tier កំពុងរង់ចាំ Reset សំណើបន្តិច។\n"
+                            "👉 សូមរង់ចាំមួយស្របក់ រួចចុចប៊ូតុង **[🔁 បង្កើតម្ដងទៀត]** នោះវានឹងដំណើរការវិញជាធម្មតា!"
+                        )
+                    continue
+
+            self.last_api_status = f"🔴 Error: {errors[-1][:50] if errors else 'Unknown'}"
+            return (
+                f"❌ **AI មិនទាន់អាចឆ្លើយតបបាននៅពេលនេះ**\n\n"
+                f"មូលហេតុ: {errors[-1] if errors else 'High Demand'}\n\n"
+                "🔄 _សូមចុចប៊ូតុង [🔁 បង្កើតម្ដងទៀត] ក្នុងរយៈពេលខ្លីខាងមុខ!_"
             )
-        except asyncio.TimeoutError:
-            self.last_api_status = "⚠️ Request Timeout"
-            return "⚠️ **សំណើចំណាយពេលយូរពេក (Request Timeout)**\nសូមចុច [🔁 បង្កើតម្ដងទៀត] ដើម្បីសាកល្បងឡើងវិញ។"
 
     def _is_error_response(self, text: str) -> bool:
         if not text:
@@ -193,11 +209,11 @@ class AIService:
         niche: str,
         duration: str = "60 វិនាទី",
         user_pace: float = DEFAULT_CHARS_PER_SECOND
-    ) -> Tuple[str, Optional[ScriptPlan]]:
+    ) -> PlanResult:
         """
         Generates a timestamped video script & shooting plan according to content format.
         Validates timeline rules in Python and calculates estimated speaking duration.
-        Returns: (formatted_telegram_text, ScriptPlan)
+        Returns: PlanResult (explicit success contract).
         """
         target_s = parse_duration_seconds(duration)
 
@@ -219,35 +235,39 @@ class AIService:
         raw_response = await self.generate_response(prompt, is_json=True)
 
         if self._is_error_response(raw_response):
-            return raw_response, None
+            return PlanResult(
+                success=False,
+                plan=None,
+                formatted_text=raw_response,
+                error_message="AI generation returned error message",
+            )
 
-        # Parse, validate timeline, and check speaking pace
-        plan = parse_and_validate_script_plan(raw_response, target_s, user_pace)
-
-        # Format human-readable output for Telegram
-        formatted_text = format_script_for_telegram(plan, user_pace)
-        return formatted_text, plan
+        return validate_and_build_plan(raw_response, target_s, user_pace)
 
     async def refine_shorten(
         self,
         last_script_text: str,
         duration: str = "60 វិនាទី",
         user_pace: float = DEFAULT_CHARS_PER_SECOND
-    ) -> Tuple[str, Optional[ScriptPlan]]:
+    ) -> PlanResult:
         """
         Refines the script to make dialogue punchier and shorter.
         Re-validates the timeline and recalculates estimated speaking duration.
+        Returns: PlanResult.
         """
         target_s = parse_duration_seconds(duration)
         prompt = get_refine_shorten_prompt(last_script_text, duration)
         raw_response = await self.generate_response(prompt, is_json=True)
 
         if self._is_error_response(raw_response):
-            return raw_response, None
+            return PlanResult(
+                success=False,
+                plan=None,
+                formatted_text=raw_response,
+                error_message="AI shortening returned error message",
+            )
 
-        plan = parse_and_validate_script_plan(raw_response, target_s, user_pace)
-        formatted_text = format_script_for_telegram(plan, user_pace)
-        return formatted_text, plan
+        return validate_and_build_plan(raw_response, target_s, user_pace)
 
     async def refine_hook(self, last_script: str) -> str:
         """
@@ -272,9 +292,14 @@ class AIService:
         1. Checks in-memory cache for today's date (Asia/Phnom_Penh) and category.
         2. Retrieves verified fresh news items (< 48 hours).
         3. If fresh items exist and match category, passes numbered evidence to Gemini.
-        4. Validates source IDs from Gemini output and generates verified Markdown links in Python.
-        5. If retrieval fails, no recent items, or category has no news evidence, falls back honestly to general AI ideas.
-        6. Avoids caching error messages.
+        4. Validates source IDs:
+           - Rejects if ANY referenced ID is invalid (e.g. [99]).
+           - Rejects if NO valid references exist.
+           - Validates references for each idea.
+           - On citation failure: NEVER makes an automatic second Gemini call. Returns retrieved sources with Khmer notice.
+           - Builds source links ONLY in Python from retrieved records.
+        5. If retrieval fails or category has no evidence, falls back honestly to general AI ideas.
+        6. Avoids caching error or failure messages.
         7. Concurrency locked to prevent duplicate Gemini calls from identical requests.
         """
         tz = pytz.timezone("Asia/Phnom_Penh")
@@ -318,51 +343,63 @@ class AIService:
                 prompt = get_news_grounded_ideas_prompt(sources_text, cat_clean)
                 raw_response = await self.generate_response(prompt, is_json=False)
 
-                # Check for error
+                # Check for API error
                 if self._is_error_response(raw_response):
                     return raw_response  # Do NOT cache errors
 
-                # Validate source IDs referenced in Gemini's response
+                # ── Strict Source Validation ──
+                # A. Collect all [N] references across the response
+                all_ref_matches = re.findall(r"\[(\d+)\]", raw_response)
                 referenced_ids = set()
-                for match in re.finditer(r"\[(\d+)\]", raw_response):
+                for m in all_ref_matches:
                     try:
-                        referenced_ids.add(int(match.group(1)))
+                        referenced_ids.add(int(m))
                     except ValueError:
                         pass
 
                 valid_item_ids = {it.id for it in news_items}
-                valid_refs = referenced_ids.intersection(valid_item_ids)
                 invalid_refs = referenced_ids - valid_item_ids
+                valid_refs = referenced_ids.intersection(valid_item_ids)
 
-                # Strict validation: If no valid source IDs were referenced at all, fall back honestly to AI general ideas
+                citation_failure_reason = None
                 if not valid_refs:
-                    logger.warning("Gemini generated ideas without valid source references. Falling back to honest AI generation.")
-                    prompt = get_daily_ideas_prompt(cat_clean)
-                    fallback_response = await self.generate_response(prompt, is_json=False)
-                    if self._is_error_response(fallback_response):
-                        return fallback_response
+                    citation_failure_reason = "គ្មានការយោងប្រភពលេខ [ID] ត្រឹមត្រូវណាមួយឡើយ"
+                elif invalid_refs:
+                    citation_failure_reason = f"មានការយោងលេខប្រភពដែលមិនមានក្នុងបញ្ជី {sorted(list(invalid_refs))}"
 
-                    honest_header = (
-                        "💡 *គំនិតមាតិកាទូទៅពី AI*\n"
-                        "ℹ️ _(គំនិតទូទៅពី AI - មិនបានផ្ទៀងផ្ទាត់ជាមួយព័ត៌មានថ្មីៗ ដោយសារការយោងប្រភពមិនឆ្លងកាត់ការផ្ទៀងផ្ទាត់)_\n"
-                        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+                # B. Validate per idea if structured ideas are present
+                idea_blocks = re.split(r"(?=(?:🔥\s*\*\*គំនិត|ប្រធានបទ)ទី\s*\d+)", raw_response)
+                valid_idea_blocks = [b for b in idea_blocks if re.search(r"(?:🔥\s*\*\*គំនិត|ប្រធានបទ)ទី\s*\d+", b)]
+                if valid_idea_blocks:
+                    for idx, block in enumerate(valid_idea_blocks, start=1):
+                        block_refs = set(int(x) for x in re.findall(r"\[(\d+)\]", block) if x.isdigit())
+                        block_valid = block_refs.intersection(valid_item_ids)
+                        block_invalid = block_refs - valid_item_ids
+                        if block_invalid:
+                            citation_failure_reason = f"គំនិតទី {idx} យោងលេខប្រភពមិនត្រឹមត្រូវ {sorted(list(block_invalid))}"
+                            break
+                        if not block_valid:
+                            citation_failure_reason = f"គំនិតទី {idx} ខ្វះការយោងប្រភពពិតប្រាកដ"
+                            break
+
+                # If citation failed: REJECT immediately. Do NOT call Gemini again. Show retrieved sources.
+                if citation_failure_reason:
+                    logger.warning(f"Citation verification rejected: {citation_failure_reason}. Showing retrieved sources without second Gemini call.")
+                    sources_footnote = "\n".join(
+                        f"• [{item.id}] [{item.publisher}: {item.title}]({item.url})"
+                        for item in news_items
                     )
-                    clean_body = fallback_response.replace(
-                        "━━━━━━━━━━━━━━━━━━━━━\n💡 **គំនិតមាតិកាទូទៅពី AI**\nℹ️ _(គំនិតទូទៅពី AI - មិនបានផ្ទៀងផ្ទាត់ជាមួយព័ត៌មានថ្មីៗ)_\n━━━━━━━━━━━━━━━━━━━━━", ""
-                    ).strip()
-                    sources_footnote = "\n\n━━━━━━━━━━━━━━━━━━━━━\n🔗 **បញ្ជីព័ត៌មានថ្មីៗដែលបានទាញយកមកពិនិត្យ៖**\n" + "\n".join(
-                        f"• [{item.publisher}: {item.title}]({item.url})" for item in news_items
+                    failure_output = (
+                        "⚠️ *ការផ្ទៀងផ្ទាត់ប្រភពព័ត៌មានមិនត្រឹមត្រូវ (Citation Verification Failed)*\n\n"
+                        f"មូលហេតុ៖ _{citation_failure_reason}_\n"
+                        "ដើម្បីធានានូវភាពត្រឹមត្រូវ និងទប់ស្កាត់ការប្រឌិតព័ត៌មាន AI មិនត្រូវបានអនុញ្ញាតឱ្យបង្ហាញគំនិតដែលគ្មានការបញ្ជាក់ប្រភពច្បាស់លាស់ឡើយ។\n\n"
+                        "🔗 **បញ្ជីព័ត៌មានថ្មីៗដែលបានទាញយកជាក់ស្តែង៖**\n"
+                        f"{sources_footnote}\n\n"
+                        "💡 _អ្នកអាចសាកល្បងចុច [🔁 បង្កើតម្ដងទៀត] ឬប្រើពាក្យបញ្ជា /ideas ធម្មតាដើម្បីទទួលគំនិតទូទៅពី AI។_"
                     )
-                    final_output = honest_header + clean_body + sources_footnote
-                    _DAILY_IDEAS_CACHE[cache_key] = final_output
-                    return final_output
+                    return failure_output  # Do NOT cache failure
 
-                # If any invalid references were made alongside valid ones, sanitize them
-                cleaned_response = raw_response
-                for inv_id in invalid_refs:
-                    cleaned_response = re.sub(rf"\[{inv_id}\]", "[ប្រភពមិនច្បាស់លាស់]", cleaned_response)
-
-                # Build verified sources block in Python using original validated URLs
+                # C. Citations are valid: Build verified source links ONLY in Python from retrieved records
                 verified_links = [
                     "\n━━━━━━━━━━━━━━━━━━━━━",
                     "🔗 **ប្រភពព័ត៌មានយោងពិតប្រាកដ (Verified Sources):**"
@@ -377,7 +414,7 @@ class AIService:
                 final_output = (
                     "📰 *គំនិតមាតិកាផ្អែកលើព័ត៌មានថ្មីៗ*\n"
                     "━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    + cleaned_response.strip()
+                    + raw_response.strip()
                     + "\n"
                     + "\n".join(verified_links)
                 )

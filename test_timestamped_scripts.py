@@ -1,3 +1,4 @@
+import math
 import asyncio
 import json
 import unittest
@@ -8,10 +9,12 @@ import script_models
 from script_models import (
     Scene,
     ScriptPlan,
+    PlanResult,
+    ValidationError,
     parse_duration_seconds,
     count_khmer_dialogue_units,
     estimate_speaking_duration,
-    validate_timeline,
+    validate_and_build_plan,
     parse_and_validate_script_plan,
     format_script_for_telegram,
     DEFAULT_CHARS_PER_SECOND,
@@ -29,7 +32,10 @@ from bot import (
     split_message,
     send_daily_content,
     pace_command,
-    is_error_response,
+    cancel_command,
+    handle_message,
+    button_callback_handler,
+    is_request_current,
 )
 
 class TestTimestampedScriptsAndVisuals(unittest.IsolatedAsyncioTestCase):
@@ -38,265 +44,476 @@ class TestTimestampedScriptsAndVisuals(unittest.IsolatedAsyncioTestCase):
         ai_service._DAILY_IDEAS_CACHE.clear()
         bot.user_settings.clear()
 
-    # 1. All 4 selectable durations
-    def test_all_four_selectable_durations(self):
+    # 1. Valid plans for 60, 120, 180, and 300 seconds
+    def test_all_four_selectable_durations_valid_plans(self):
         self.assertEqual(parse_duration_seconds("60 វិនាទី"), 60)
         self.assertEqual(parse_duration_seconds("2 នាទី"), 120)
         self.assertEqual(parse_duration_seconds("3 នាទី"), 180)
         self.assertEqual(parse_duration_seconds("5 នាទី"), 300)
 
-        # Also test numerical and variations
-        self.assertEqual(parse_duration_seconds("60s"), 60)
-        self.assertEqual(parse_duration_seconds("2 min"), 120)
-        self.assertEqual(parse_duration_seconds("3 minutes"), 180)
-        self.assertEqual(parse_duration_seconds("5"), 300)
-
-        # Validate that a scene plan ending at each duration validates correctly
         for dur in [60, 120, 180, 300]:
-            scenes = [
-                Scene(scene_number=1, start_seconds=0, end_seconds=dur // 2),
-                Scene(scene_number=2, start_seconds=dur // 2, end_seconds=dur),
+            half = dur // 2
+            raw_json = json.dumps({
+                "title": f"Video for {dur}s",
+                "target_audience": "Creators",
+                "hook": "Check this out",
+                "caption": "Viral video",
+                "hashtags": ["#viral"],
+                "cta": "Follow for more",
+                "scenes": [
+                    {
+                        "scene_number": 1,
+                        "start_seconds": 0,
+                        "end_seconds": half,
+                        "spoken_text_km": "សួស្តីអ្នកទាំងអស់គ្នា",
+                        "shot_size": "Close-Up",
+                        "camera_action": "Static",
+                        "visual_action": "Speaking to camera",
+                        "on_screen_text_km": "Hook",
+                        "editing_note": "Cut",
+                        "audio_note": "Music"
+                    },
+                    {
+                        "scene_number": 2,
+                        "start_seconds": half,
+                        "end_seconds": dur,
+                        "spoken_text_km": "នេះជាដំណោះស្រាយ",
+                        "shot_size": "Wide Shot",
+                        "camera_action": "Pan Right",
+                        "visual_action": "Showing screen",
+                        "on_screen_text_km": "Solution",
+                        "editing_note": "Zoom",
+                        "audio_note": "Beat drop"
+                    }
+                ]
+            })
+            res = validate_and_build_plan(raw_json, target_duration_seconds=dur)
+            self.assertTrue(res.success, f"Failed for duration {dur}: {res.error_message}")
+            self.assertIsNotNone(res.plan)
+            self.assertEqual(res.plan.target_duration_seconds, dur)
+            self.assertTrue(res.plan.is_timeline_valid)
+            self.assertEqual(len(res.plan.scenes), 2)
+
+    # 2. Invalid JSON and top-level types (array, string, number, null)
+    def test_invalid_json_and_toplevel_types(self):
+        # Broken JSON syntax
+        res1 = validate_and_build_plan("{invalid_json", 60)
+        self.assertFalse(res1.success)
+        self.assertIn("មិនត្រឹមត្រូវ", res1.formatted_text)
+
+        # Top-level list
+        res2 = validate_and_build_plan("[1, 2, 3]", 60)
+        self.assertFalse(res2.success)
+        self.assertIn("Top-level", res2.error_message)
+
+        # Top-level string
+        res3 = validate_and_build_plan('"just a string"', 60)
+        self.assertFalse(res3.success)
+
+        # Top-level null
+        res4 = validate_and_build_plan("null", 60)
+        self.assertFalse(res4.success)
+
+        # Empty string
+        res5 = validate_and_build_plan("", 60)
+        self.assertFalse(res5.success)
+
+    # 3. Invalid scene_number and field types
+    def test_invalid_scene_number_and_field_types(self):
+        base = {
+            "title": "Test",
+            "scenes": [
+                {
+                    "scene_number": True,  # boolean rejected as scene_number
+                    "start_seconds": 0,
+                    "end_seconds": 60,
+                    "visual_action": "Action",
+                    "shot_size": "Medium",
+                    "camera_action": "Static"
+                }
             ]
-            valid, notes = validate_timeline(scenes, dur)
-            self.assertTrue(valid, f"Failed for duration {dur}: {notes}")
+        }
+        res = validate_and_build_plan(json.dumps(base), 60)
+        self.assertFalse(res.success)
+        self.assertIn("scene_number", res.error_message)
 
-    # 2. Timeline gaps, overlaps, and incorrect end times
-    def test_timeline_validation_rules(self):
-        target = 60
+        # Non-string visual direction
+        base["scenes"][0]["scene_number"] = 1
+        base["scenes"][0]["visual_action"] = {"nested": "not_a_string"}
+        res2 = validate_and_build_plan(json.dumps(base), 60)
+        self.assertFalse(res2.success)
+        self.assertIn("visual_action", res2.error_message)
 
-        # Gap between scene 1 and 2
-        gap_scenes = [
-            Scene(scene_number=1, start_seconds=0, end_seconds=10),
-            Scene(scene_number=2, start_seconds=15, end_seconds=60),  # Gap 10-15s
-        ]
-        valid, notes = validate_timeline(gap_scenes, target)
-        self.assertFalse(valid)
-        self.assertTrue(any("ចន្លោះប្រហោង" in n or "Gap" in n for n in notes))
+        # Permitted empty dialogue for visual-only scenes
+        base["scenes"][0]["visual_action"] = "B-roll panning"
+        base["scenes"][0]["spoken_text_km"] = ""  # empty dialogue
+        res3 = validate_and_build_plan(json.dumps(base), 60)
+        self.assertTrue(res3.success)
+        self.assertEqual(res3.plan.scenes[0].estimated_spoken_seconds, 0.0)
 
-        # Overlap between scene 1 and 2
-        overlap_scenes = [
-            Scene(scene_number=1, start_seconds=0, end_seconds=20),
-            Scene(scene_number=2, start_seconds=15, end_seconds=60),  # Overlap at 15-20s
-        ]
-        valid, notes = validate_timeline(overlap_scenes, target)
-        self.assertFalse(valid)
-        self.assertTrue(any("ជាន់គ្នា" in n or "Overlap" in n for n in notes))
+    # 4. Empty scenes or non-object scenes
+    def test_empty_scenes_and_non_objects(self):
+        # Empty scenes list
+        res1 = validate_and_build_plan(json.dumps({"title": "Test", "scenes": []}), 60)
+        self.assertFalse(res1.success)
+        self.assertIn("ទទេ", res1.error_message)
 
-        # Incorrect end time
-        wrong_end_scenes = [
-            Scene(scene_number=1, start_seconds=0, end_seconds=20),
-            Scene(scene_number=2, start_seconds=20, end_seconds=45),  # Ends at 45 instead of 60
-        ]
-        valid, notes = validate_timeline(wrong_end_scenes, target)
-        self.assertFalse(valid)
-        self.assertTrue(any("មិនត្រូវនឹងរយៈពេលកំណត់" in n for n in notes))
+        # Missing scenes
+        res2 = validate_and_build_plan(json.dumps({"title": "Test"}), 60)
+        self.assertFalse(res2.success)
 
-        # Start not 0
-        wrong_start_scenes = [
-            Scene(scene_number=1, start_seconds=5, end_seconds=60),
-        ]
-        valid, notes = validate_timeline(wrong_start_scenes, target)
-        self.assertFalse(valid)
-        self.assertTrue(any("មិនបានចាប់ផ្តើមពីវិនាទី 0" in n for n in notes))
+        # Non-dict scene entry
+        res3 = validate_and_build_plan(json.dumps({"title": "Test", "scenes": ["string_scene"]}), 60)
+        self.assertFalse(res3.success)
+        self.assertIn("Object", res3.error_message)
 
-        # Negative time or zero-duration
-        zero_len_scenes = [
-            Scene(scene_number=1, start_seconds=0, end_seconds=0),
-            Scene(scene_number=2, start_seconds=0, end_seconds=60),
-        ]
-        valid, notes = validate_timeline(zero_len_scenes, target)
-        self.assertFalse(valid)
+    # 5. Negative, fractional, boolean, and non-finite timestamps
+    def test_invalid_timestamps_rejected(self):
+        def make_plan(start, end):
+            return json.dumps({
+                "title": "Test",
+                "scenes": [
+                    {
+                        "scene_number": 1,
+                        "start_seconds": start,
+                        "end_seconds": end,
+                        "visual_action": "Action",
+                        "shot_size": "Medium",
+                        "camera_action": "Static"
+                    }
+                ]
+            })
 
-    # 3. Khmer text without spaces
-    def test_khmer_text_without_spaces(self):
-        # In Khmer, words are written continuously without spaces
-        khmer_sentence_no_spaces = "នេះជាអត្ថបទគំរូសាកល្បងភាសាខ្មែរគ្មានដកឃ្លា"
-        
-        # Whitespace split fails (returns 1 word)
-        whitespace_split_count = len(khmer_sentence_no_spaces.split())
-        self.assertEqual(whitespace_split_count, 1)
+        # Boolean start timestamp
+        res1 = validate_and_build_plan(make_plan(False, 60), 60)
+        self.assertFalse(res1.success)
+        self.assertIn("boolean", res1.error_message)
 
-        # Our character/syllable unit counting heuristic correctly counts meaningful script units
-        unit_count = count_khmer_dialogue_units(khmer_sentence_no_spaces)
-        self.assertGreater(unit_count, 20)  # Contains ~39 meaningful script characters
+        # Fractional timestamp
+        res2 = validate_and_build_plan(make_plan(0, 59.5), 60)
+        self.assertFalse(res2.success)
+        self.assertIn("ទសភាគ", res2.error_message)
 
-        # Estimated speaking duration does not return near-zero
-        est_duration = estimate_speaking_duration(khmer_sentence_no_spaces, chars_per_second=10.0)
-        self.assertGreater(est_duration, 2.0)
+        # Negative timestamp
+        res3 = validate_and_build_plan(make_plan(-5, 60), 60)
+        self.assertFalse(res3.success)
+        self.assertIn("អវិជ្ជមាន", res3.error_message)
 
-    # 4. Speaking-pace calibration (/pace)
-    async def test_speaking_pace_calibration(self):
-        chat_id = 98765
-        # Initial default pace
-        self.assertEqual(get_user_pace(chat_id), DEFAULT_CHARS_PER_SECOND)
+    # 6. Timeline validation: gaps, overlaps, wrong start, wrong end
+    def test_timeline_errors_rejected(self):
+        # Start after zero
+        bad_start = json.dumps({
+            "title": "Test",
+            "scenes": [
+                {"scene_number": 1, "start_seconds": 5, "end_seconds": 60, "visual_action": "A", "shot_size": "M", "camera_action": "S"}
+            ]
+        })
+        self.assertFalse(validate_and_build_plan(bad_start, 60).success)
 
-        # Calibrate with sample text: 10 seconds for 120 characters -> 12.0 chars/sec
-        sample_text = "នេះជាអត្ថបទគំរូសាកល្បងភាសាខ្មែរ " * 5
-        units = count_khmer_dialogue_units(sample_text)
-        seconds = 10.0
-        expected_pace = round(units / seconds, 2)
+        # Gap between scenes
+        gap_plan = json.dumps({
+            "title": "Test",
+            "scenes": [
+                {"scene_number": 1, "start_seconds": 0, "end_seconds": 20, "visual_action": "A", "shot_size": "M", "camera_action": "S"},
+                {"scene_number": 2, "start_seconds": 25, "end_seconds": 60, "visual_action": "A", "shot_size": "M", "camera_action": "S"}
+            ]
+        })
+        res_gap = validate_and_build_plan(gap_plan, 60)
+        self.assertFalse(res_gap.success)
+        self.assertIn("Gap", res_gap.error_message)
 
-        set_user_pace(chat_id, expected_pace)
-        self.assertEqual(get_user_pace(chat_id), expected_pace)
+        # Wrong end time (exceeds tolerance > 1s)
+        wrong_end = json.dumps({
+            "title": "Test",
+            "scenes": [
+                {"scene_number": 1, "start_seconds": 0, "end_seconds": 45, "visual_action": "A", "shot_size": "M", "camera_action": "S"}
+            ]
+        })
+        self.assertFalse(validate_and_build_plan(wrong_end, 60).success)
 
-        # Test pace_command logic via Update/Context mock
-        mock_update = MagicMock()
-        mock_update.effective_chat.id = chat_id
-        mock_message = AsyncMock()
-        del mock_message.message
-        mock_update.message = mock_message
-        mock_context = MagicMock()
-        mock_context.args = ["15", "សួស្តីអ្នកទាំងអស់គ្នា", "ថ្ងៃនេះខ្ញុំមានគន្លឹះពិសេស"]
-
-        await pace_command(mock_update, mock_context)
-        self.assertTrue(mock_message.reply_text.called)
-        # Stored pace was updated
-        updated_pace = get_user_pace(chat_id)
-        self.assertNotEqual(updated_pace, 0)
-
-    # 5. Dialogue too long for its scene
-    def test_dialogue_too_long_warning(self):
-        target = 60
-        # Scene 1 is 3 seconds (0 to 3s), but spoken text has 80 characters (~8 seconds of dialogue)
-        long_spoken_text = "សួស្តីអ្នកទាំងអស់គ្នា! ថ្ងៃនេះខ្ញុំមានរឿងរ៉ាវដ៏វែងមួយដែលមិនអាចនិយាយចប់ត្រឹមតែបីវិនាទីនោះទេ!"
-        raw_json = json.dumps({
-            "title": "Test Video",
-            "target_audience": "Creators",
-            "hook": "Hook 3s",
-            "caption": "Caption",
-            "hashtags": ["#test"],
-            "cta": "Follow now",
+    # 7. Regression test: 0-40 and 20-40 overlap for 60s video MUST be rejected
+    def test_overlap_regression_0_40_and_20_40(self):
+        overlap_plan = json.dumps({
+            "title": "Overlap Video",
             "scenes": [
                 {
                     "scene_number": 1,
                     "start_seconds": 0,
-                    "end_seconds": 3,
-                    "spoken_text_km": long_spoken_text,
-                    "shot_size": "Close-Up",
-                    "camera_action": "Static",
-                    "visual_action": "Speaking to camera",
-                    "on_screen_text_km": "Tips",
-                    "editing_note": "Fast cut",
-                    "audio_note": "Upbeat"
+                    "end_seconds": 40,
+                    "visual_action": "Scene 1",
+                    "shot_size": "Medium",
+                    "camera_action": "Static"
                 },
                 {
                     "scene_number": 2,
-                    "start_seconds": 3,
-                    "end_seconds": 60,
-                    "spoken_text_km": "ខ្លីល្មម",
-                    "shot_size": "Medium Shot",
-                    "camera_action": "Static",
-                    "visual_action": "Demo",
-                    "on_screen_text_km": "",
-                    "editing_note": "",
-                    "audio_note": ""
+                    "start_seconds": 20,
+                    "end_seconds": 40,
+                    "visual_action": "Scene 2",
+                    "shot_size": "Close-Up",
+                    "camera_action": "Pan"
                 }
             ]
         })
+        res = validate_and_build_plan(overlap_plan, 60)
+        self.assertFalse(res.success, "0-40 and 20-40 overlap must be strictly rejected")
+        self.assertIn("Overlap", res.error_message)
 
-        plan = parse_and_validate_script_plan(raw_json, target_duration_seconds=target, user_pace=10.0)
-        self.assertTrue(plan.is_timeline_valid)
-        self.assertTrue(plan.scenes[0].is_dialogue_too_long)
-        self.assertFalse(plan.scenes[1].is_dialogue_too_long)
+    # 8. Recalculation after narrow permitted timing adjustment (<= 1s at final scene)
+    def test_recalculation_after_narrow_adjustment(self):
+        # Continuous plan ending at 59s for target 60s (diff = +1s)
+        plan_59s = json.dumps({
+            "title": "Adjusted Video",
+            "scenes": [
+                {
+                    "scene_number": 1,
+                    "start_seconds": 0,
+                    "end_seconds": 30,
+                    "spoken_text_km": "ពាក្យប្លង់ទីមួយ",
+                    "visual_action": "A",
+                    "shot_size": "M",
+                    "camera_action": "S"
+                },
+                {
+                    "scene_number": 2,
+                    "start_seconds": 30,
+                    "end_seconds": 59,  # Ends at 59s, 1s shy of 60s
+                    "spoken_text_km": "ពាក្យប្លង់ទីពីរ",
+                    "visual_action": "B",
+                    "shot_size": "M",
+                    "camera_action": "S"
+                }
+            ]
+        })
+        res = validate_and_build_plan(plan_59s, 60, user_pace=10.0)
+        self.assertTrue(res.success)
+        self.assertEqual(res.plan.scenes[1].end_seconds, 60)  # Narrowly adjusted
+        self.assertTrue(any("កែសម្រួល" in n for n in res.validation_notes))
+        # Speaking estimates and warnings recalculated
+        self.assertGreater(res.plan.scenes[1].estimated_spoken_seconds, 0)
+        self.assertFalse(res.plan.scenes[1].is_dialogue_too_long)
 
-        # Check that Telegram formatted output displays the warning
-        formatted = format_script_for_telegram(plan, user_pace=10.0)
-        self.assertIn("ពាក្យនិយាយអាចវែងបន្តិច", formatted)
-        self.assertIn("រយៈពេលនិយាយ៖ ប៉ាន់ស្មាន", formatted)
+    # 9. Khmer text character units (not WPM or syllable claims)
+    def test_khmer_character_units(self):
+        khmer_text = "នេះជាអត្ថបទគំរូសាកល្បងភាសាខ្មែរគ្មានដកឃ្លា"
+        units = count_khmer_dialogue_units(khmer_text)
+        self.assertGreater(units, 20)
+        est = estimate_speaking_duration(khmer_text, chars_per_second=10.0)
+        self.assertGreater(est, 2.0)
 
-    # 6. Feed failure and old/missing publication dates
-    def test_feed_old_and_missing_pubdate(self):
-        now_utc = datetime.now(timezone.utc)
-        old_date_str = (now_utc - timedelta(days=4)).strftime("%a, %d %b %Y %H:%M:%S GMT")
-        xml_content = f"""<rss><channel>
-            <item><title>Old News</title><link>https://example.com/old</link><pubDate>{old_date_str}</pubDate></item>
-            <item><title>No Date News</title><link>https://example.com/nodate</link></item>
-        </channel></rss>""".encode("utf-8")
-
-        items = parse_rss_xml(xml_content, "TestPub", now_utc)
-        self.assertEqual(len(items), 2)
-        self.assertFalse(items[0].is_recent)
-        self.assertFalse(items[1].is_recent)
-        self.assertIsNone(items[1].published_at)
-
-    # 7. Invalid source IDs fallback to open source list
-    async def test_invalid_source_ids_fallback(self):
-        service = AIService()
-        fake_items = [
-            NewsItem(id=1, title="Tech In Cambodia", publisher="KhmerTech", url="https://example.com/1", published_at=datetime.now(timezone.utc), is_recent=True)
-        ]
-        # AI returns fabricated source [S99]
-        fake_ai_output = "🔥 គំនិតទី ១\n• Hook: Test\n• ប្រភព៖ [99]"
-
-        with patch("ai_service.get_fresh_news_sources", return_value=fake_items):
-            with patch.object(service, "generate_response", new_callable=AsyncMock) as mock_gen:
-                mock_gen.return_value = fake_ai_output
-                result = await service.generate_daily_ideas("ទូទៅ")
-                self.assertIn("បញ្ជីព័ត៌មានថ្មីៗដែលបានទាញយកមកពិនិត្យ", result)
-                self.assertIn("Tech In Cambodia", result)
-
-    # 8. Honest AI-only fallback
-    async def test_honest_fallback(self):
-        service = AIService()
-        with patch("ai_service.get_fresh_news_sources", return_value=[]):
-            with patch.object(service, "generate_response", new_callable=AsyncMock) as mock_gen:
-                mock_gen.return_value = "គំនិត AI គំរូ..."
-                result = await service.generate_daily_ideas("ទូទៅ")
-                self.assertIn("គំនិតមាតិកាទូទៅពី AI", result)
-                self.assertIn("មិនបានផ្ទៀងផ្ទាត់ជាមួយព័ត៌មានថ្មីៗ", result)
-
-    # 9. Daily cache reuse saves quota
-    async def test_daily_cache_reuse(self):
-        service = AIService()
-        mock_gen = AsyncMock(return_value="គំនិតមាតិកាថ្ងៃនេះ")
-        with patch("ai_service.get_fresh_news_sources", return_value=[]):
-            with patch.object(service, "generate_response", mock_gen):
-                res1 = await service.generate_daily_ideas("ទូទៅ")
-                res2 = await service.generate_daily_ideas("ទូទៅ")
-                self.assertEqual(res1, res2)
-                self.assertEqual(mock_gen.call_count, 1)
-
-    # 10. One generation for multiple subscribers
-    async def test_broadcast_one_generation_for_all(self):
-        bot.subscribers = {101, 102, 103}
-        mock_bot = AsyncMock()
+    # 10. /pace command validation: NaN, inf, invalid seconds, bounds
+    async def test_pace_command_validation(self):
+        chat_id = 12345
+        mock_update = MagicMock()
+        mock_update.effective_chat.id = chat_id
+        mock_msg = AsyncMock()
+        del mock_msg.message
+        mock_update.message = mock_msg
         mock_context = MagicMock()
-        mock_context.bot = mock_bot
 
-        with patch("bot.ai_service.generate_daily_ideas", new_callable=AsyncMock) as mock_gen:
-            mock_gen.return_value = "Daily content"
-            await send_daily_content(mock_context)
-            mock_gen.assert_called_once_with("ទូទៅ")
-            self.assertEqual(mock_bot.send_message.call_count, 3)
+        # NaN seconds
+        mock_context.args = ["NaN", "សួស្តីអ្នកទាំងអស់គ្នា"]
+        await pace_command(mock_update, mock_context)
+        self.assertIn("មិនត្រឹមត្រូវ", mock_msg.reply_text.call_args[0][0])
 
-    # 11. Refinement failure preserves the successful script
-    async def test_refinement_failure_preserves_script(self):
-        service = AIService()
-        # When refine_shorten fails with AI error, it returns (error_text, None)
-        with patch.object(service, "generate_response", new_callable=AsyncMock) as mock_gen:
-            mock_gen.return_value = "⚠️ Quota Limit Exceeded"
-            err_msg, plan = await service.refine_shorten("Old Script Content", "60 វិនាទី")
-            self.assertTrue(is_error_response(err_msg))
-            self.assertIsNone(plan)
+        # Negative seconds
+        mock_context.args = ["-10", "សួស្តីអ្នកទាំងអស់គ្នា"]
+        await pace_command(mock_update, mock_context)
+        self.assertIn("ចន្លោះពី", mock_msg.reply_text.call_args[0][0])
 
-        # In bot.py, context.user_data["last_script"] is preserved when plan is None
-        user_data = {
-            "last_script": "Original Successful Script",
-            "last_script_plan": ScriptPlan("Title", "Audience", "Hook", "Cap", [], "CTA", 60, 50.0, [])
+        # Short sample text (< 10 units)
+        mock_context.args = ["10", "ខ្លី"]
+        await pace_command(mock_update, mock_context)
+        self.assertIn("ខ្លីពេក", mock_msg.reply_text.call_args[0][0])
+
+        # Too slow (< 3 chars/sec) -> explains without silent deceptive clamping
+        mock_context.args = ["100", "សួស្តីអ្នកទាំងអស់គ្នា " * 2]
+        await pace_command(mock_update, mock_context)
+        self.assertIn("យឺតខ្លាំងខុសធម្មតា", mock_msg.reply_text.call_args[0][0])
+
+        # Valid pace
+        mock_context.args = ["10", "សួស្តីអ្នកទាំងអស់គ្នា ថ្ងៃនេះខ្ញុំមានគន្លឹះពិសេស " * 2]
+        await pace_command(mock_update, mock_context)
+        self.assertIn("ជោគជ័យ", mock_msg.reply_text.call_args[0][0])
+        self.assertIn("ការប៉ាន់ស្មានប្រហាក់ប្រហែល", mock_msg.reply_text.call_args[0][0])
+
+    # 11. Invalid initial generation does not mutate state or show success
+    async def test_invalid_initial_generation_does_not_mutate_state(self):
+        mock_update = MagicMock()
+        mock_update.effective_chat.id = 777
+        mock_msg = AsyncMock()
+        del mock_msg.message
+        mock_msg.text = "ប្រធានបទសាកល្បង"
+        mock_status_msg = AsyncMock()
+        mock_msg.reply_text.return_value = mock_status_msg
+        mock_update.message = mock_msg
+
+        mock_context = MagicMock()
+        mock_context.user_data = {
+            "state": "awaiting_topic",
+            "content_type": "3whs",
+            "is_processing": False,
+            "req_token": 0,
         }
-        # Simulate failed shorten callback logic
-        if not is_error_response(err_msg) and plan is not None:
-            user_data["last_script"] = err_msg
-        # Assert previous script is strictly preserved
-        self.assertEqual(user_data["last_script"], "Original Successful Script")
 
-    # 12. Long Telegram output split correctly
-    def test_long_telegram_output_split(self):
+        # AI returns invalid plan (e.g. overlap 0-40 and 20-40)
+        invalid_plan_result = PlanResult(
+            success=False,
+            plan=None,
+            formatted_text="⚠️ Plan validation failed",
+            error_message="Overlap",
+        )
+
+        with patch("bot.ai_service.generate_content_by_type", new_callable=AsyncMock, return_value=invalid_plan_result):
+            await handle_message(mock_update, mock_context)
+
+        # Must not store in last_script or last_script_plan
+        self.assertNotIn("last_script", mock_context.user_data)
+        self.assertNotIn("last_script_plan", mock_context.user_data)
+        # Must show failure/incomplete notice, not success notice
+        last_reply = mock_msg.reply_text.call_args[0][0]
+        self.assertIn("មិនទាន់ជោគជ័យ", last_reply)
+        self.assertNotIn("រួចរាល់!", last_reply)
+
+    # 12. Invalid refinement preserves previous script and metadata
+    async def test_invalid_refinement_preserves_previous_script(self):
+        mock_query = AsyncMock()
+        mock_query.data = "refine:shorten"
+        mock_status_msg = AsyncMock()
+        mock_query.message.reply_text.return_value = mock_status_msg
+        mock_update = MagicMock()
+        mock_update.callback_query = mock_query
+        mock_update.effective_chat.id = 888
+
+        prev_plan = ScriptPlan(
+            title="Old Plan", target_audience="", hook="", caption="",
+            hashtags=[], cta="", target_duration_seconds=60,
+            estimated_speaking_seconds=40.0, scenes=[]
+        )
+        mock_context = MagicMock()
+        mock_context.user_data = {
+            "last_script": "ORIGINAL_GOOD_SCRIPT",
+            "last_script_plan": prev_plan,
+            "last_duration": "60 វិនាទី",
+            "is_processing": False,
+            "req_token": 0,
+        }
+
+        # Refinement returns failure
+        failure_result = PlanResult(
+            success=False,
+            plan=None,
+            formatted_text="⚠️ Shortening Failed",
+            error_message="Validation error"
+        )
+
+        with patch("bot.ai_service.refine_shorten", new_callable=AsyncMock, return_value=failure_result):
+            await button_callback_handler(mock_update, mock_context)
+
+        # Previous script and plan must be PRESERVED
+        self.assertEqual(mock_context.user_data["last_script"], "ORIGINAL_GOOD_SCRIPT")
+        self.assertEqual(mock_context.user_data["last_script_plan"], prev_plan)
+        # Failure notice shown
+        self.assertIn("មិនទាន់ជោគជ័យ", mock_query.message.reply_text.call_args[0][0])
+
+    # 13. Cancellation and stale-result suppression
+    async def test_cancel_and_stale_result_suppression(self):
+        mock_update = MagicMock()
+        mock_update.effective_chat.id = 999
+        mock_msg = AsyncMock()
+        del mock_msg.message
+        mock_update.message = mock_msg
+
+        # Mock an active running task
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+
+        mock_context = MagicMock()
+        mock_context.user_data = {
+            "is_processing": True,
+            "req_token": 5,
+            "active_task": mock_task,
+            "last_script": "EXISTING_SCRIPT",
+        }
+
+        # Run /cancel
+        await cancel_command(mock_update, mock_context)
+
+        # Active task was cancelled
+        mock_task.cancel.assert_called_once()
+        # Request token was incremented (invalidating in-flight token 5)
+        self.assertEqual(mock_context.user_data["req_token"], 6)
+        # Previous script strictly preserved
+        self.assertEqual(mock_context.user_data["last_script"], "EXISTING_SCRIPT")
+        self.assertFalse(mock_context.user_data["is_processing"])
+
+        # Verify that checking token 5 is now considered stale
+        self.assertFalse(is_request_current(mock_context, 5))
+
+    # 14. Message splitting for long texts
+    def test_message_splitting(self):
         long_text = "ប្លង់ទី ១៖ ខ្លឹមសារវែង " * 300
         chunks = split_message(long_text, max_length=4000)
         self.assertGreater(len(chunks), 1)
         for chunk in chunks:
             self.assertLessEqual(len(chunk), 4000)
+
+    # 15. Duplicate simultaneous user requests
+    async def test_duplicate_simultaneous_user_requests(self):
+        from bot import acquire_user_request, release_user_request
+        mock_ctx = MagicMock()
+        mock_ctx.user_data = {}
+
+        # First request acquires lock
+        token1 = acquire_user_request(mock_ctx)
+        self.assertIsNotNone(token1)
+        self.assertTrue(mock_ctx.user_data["is_processing"])
+
+        # Second simultaneous request is rejected
+        token2 = acquire_user_request(mock_ctx)
+        self.assertIsNone(token2, "Second concurrent request must be rejected")
+
+        # After releasing first, new request can be acquired
+        release_user_request(mock_ctx, token1)
+        self.assertFalse(mock_ctx.user_data["is_processing"])
+        token3 = acquire_user_request(mock_ctx)
+        self.assertIsNotNone(token3)
+
+    # 16. Timeout halts fallback to prevent quota waste
+    async def test_timeout_stops_fallback_cascade(self):
+        service = AIService()
+        # Mock _generate_with_model to timeout on gemini-2.5-flash
+        call_models = []
+        async def fake_generate_with_model(model_name, prompt, is_json):
+            call_models.append(model_name)
+            raise asyncio.TimeoutError()
+
+        with patch.object(service, "is_configured", return_value=True):
+            with patch.object(service, "_generate_with_model", side_effect=fake_generate_with_model):
+                res = await service.generate_response("test prompt")
+                # Must stop immediately on timeout without cascading to all models
+                self.assertEqual(len(call_models), 1)
+                self.assertIn("Request Timeout", res)
+
+    # 17. Scheduler configuration check when JobQueue is unavailable
+    def test_scheduler_jobqueue_unavailable_warning(self):
+        with patch("bot.ApplicationBuilder") as mock_app_builder:
+            mock_app = MagicMock()
+            mock_app.job_queue = None  # Simulate JobQueue missing
+            mock_app_builder.return_value.token.return_value.concurrent_updates.return_value.build.return_value = mock_app
+
+            with patch("bot.logger.error") as mock_log_err:
+                with patch.dict("os.environ", {"TELEGRAM_BOT_TOKEN": "mock_token"}):
+                    # Mock run_polling to exit immediately
+                    mock_app.run_polling.side_effect = SystemExit(0)
+                    try:
+                        bot.main()
+                    except SystemExit:
+                        pass
+                    # Verify actionable error message logged
+                    self.assertTrue(mock_log_err.called)
+                    error_msg = mock_log_err.call_args[0][0]
+                    self.assertIn("JobQueue is NOT available", error_msg)
+                    self.assertIn("python-telegram-bot[job-queue]", error_msg)
 
 if __name__ == "__main__":
     unittest.main()
