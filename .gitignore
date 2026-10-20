@@ -5,3 +5,5 @@ __pycache__/
 .system_generated/
 subscribers.json
 user_settings.json
+*.sqlite3
+*.db

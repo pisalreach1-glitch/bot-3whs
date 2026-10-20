@@ -311,3 +311,39 @@ def get_chat_prompt(user_message: str) -> str:
 
 សំណួរ: "{user_message}"
 """
+
+# ─────────────────────────────────────────────────────────────────
+# CONTENT TYPE: Short Comedy Video
+# ─────────────────────────────────────────────────────────────────
+def get_comedy_prompt(topic: str, style: str = "everyday", actor_count: int = 1, duration: str = "60 វិនាទី") -> str:
+    target_s = parse_duration_seconds(duration)
+    schema_prompt = get_shooting_plan_schema_prompt(target_s, duration)
+    style_desc = {
+        "everyday": "ជីវិតរស់នៅប្រចាំថ្ងៃ (Everyday relatable Khmer life)",
+        "parody": "ការលេងត្រាប់តាមកំប្លែង (Parody)",
+        "drama": "រឿងតូចធ្វើរឿងធំ (Over-dramatic reaction)",
+        "sarcasm": "កំប្លែងឌឺដង/ចំអកបែបស៊ីវិល័យ (Sarcastic comedy)"
+    }.get(style, style)
+
+    actors_desc = f"{actor_count} នាក់ (ដើរតួជា ២ តួអង្គឆ្លាស់គ្នា)" if actor_count == 1 else f"{actor_count} នាក់ (សន្ទនាឆ្លើយឆ្លងគ្នា)"
+
+    return f"""
+សូមបង្កើត Script វីដេអូកំប្លែងខ្លី (Short Comedy Video) ជាភាសាខ្មែរ សម្រាប់ផលិតជាវីដេអូខ្លី (TikTok / Reels / Shorts)។
+🎭 ប្រធានបទកំប្លែង: "{topic}"
+🎨 ស្ទីលកំប្លែង: {style_desc}
+👥 ចំនួនតួអង្គ: {actors_desc}
+
+រចនាសម្ព័ន្ធកំប្លែង (Comedy Structure):
+1. Setup (ស្ថានភាពដើម ធម្មតា)
+2. Escalation (រឿងចាប់ផ្តើមស្មុគស្មាញ ឬយល់ច្រឡំ)
+3. Punchline (ចំណុចផ្ទុះសំណើច ឬ Twist នឹកស្មានមិនដល់)
+4. Reaction / Callback (ប្រតិកម្មចុងក្រោយ ឬកាយវិការបិទប្លង់)
+
+សំខាន់៖
+- រក្សាពាក្យសម្ដីតួអង្គ (Spoken dialogue) ឱ្យខ្លី ខ្លឹម ចំៗ។
+- ដាក់កាយវិការ កំប្លែងទឹកមុខ និងប្រតិកម្ម (Reactions / Acting notes) ក្នុង visual_action និង audio_note កុំលាយឡំក្នុង spoken_text_km ឡើយ។
+- បម្រុងពេលវេលាសម្រាប់ការផ្អាក (pauses/reactions)។
+
+{schema_prompt}
+"""
+

@@ -86,11 +86,84 @@ TIMEZONE=Asia/Phnom_Penh
 
 ---
 
-## 📂 រចនាសម្ព័ន្ធ Folder (Project Structure)
-- [`bot.py`](file:///c:/Users/USER/Desktop/bot%203WHs/bot.py) : កូដមេរបស់ Telegram Bot, Handlers, Calibration & Daily Broadcast
-- [`script_models.py`](file:///c:/Users/USER/Desktop/bot%203WHs/script_models.py) : Data Models, Timeline Validation, Khmer Speaking Pace Heuristic & Telegram Formatting
-- [`ai_service.py`](file:///c:/Users/USER/Desktop/bot%203WHs/ai_service.py) : កូដគ្រប់គ្រង Google Gemini AI, Structured Script JSON, News Grounding, Validation & Caching
-- [`prompts.py`](file:///c:/Users/USER/Desktop/bot%203WHs/prompts.py) : System Prompts, Structured JSON Schemas, Visual Direction & 3WHs Formats
-- [`trend_sources.py`](file:///c:/Users/USER/Desktop/bot%203WHs/trend_sources.py) : ម៉ូឌុលទាញយក និង Parse Public RSS News ដោយឥតគិតថ្លៃ
-- [`.env`](file:///c:/Users/USER/Desktop/bot%203WHs/.env) : កន្លែងកំណត់ Environment Variables
-- [`run_bot.bat`](file:///c:/Users/USER/Desktop/bot%203WHs/run_bot.bat) : Shortcut សម្រាប់ដំណើរការ Bot
+## 📂 រចនាសម្ព័ន្ធគម្រោង (Project Architecture)
+
+```
+bot-3whs/
+├── bot.py                       # Application entry point & service wiring
+├── config.py                    # Environment & validated configuration (AppConfig)
+├── ai_service.py                # Gemini transport, retries & JSON generation
+├── prompts.py                   # Prompts for all 6 formats & comedy
+├── script_models.py             # Script/scene schema & strict timeline validation
+├── trend_sources.py             # Public RSS news retrieval & caching
+│
+├── app/
+│   ├── __init__.py
+│   ├── models.py                # UserKey, Draft, GenerationRequest, SavedScript, EvidenceRecord, Idea
+│   ├── callbacks.py             # Compact callback encoding/decoding (<64 bytes)
+│   ├── keyboards.py             # Telegram keyboards with Khmer labels
+│   ├── views.py                 # Khmer rendering for screens & script views (Read, Shots, Caption)
+│   ├── navigation.py            # Screen transitions, history stack & Back/Home navigation
+│   ├── storage.py               # SQLite repository with short parameterized transactions
+│   ├── task_manager.py          # Per-UserKey request tracking, cancellation & concurrency deduplication
+│   ├── telegram_io.py           # Message splitting (<=4000 chars) & safe Markdown fallback
+│   │
+│   ├── handlers/
+│   │   ├── __init__.py
+│   │   ├── commands.py          # /start, /help, /cancel, /ideas, /pace, /status, /subscribe, /unsubscribe
+│   │   ├── menu.py              # Main menu routing & format navigation
+│   │   ├── creation.py          # Format pick -> Topic input -> Review -> Generate pipeline
+│   │   ├── ideas.py             # Category ideas retrieval & selection to draft
+│   │   ├── scripts.py           # Script views (Summary, Read, Shots, Caption) & revisions
+│   │   ├── settings.py          # Button-based settings (Duration, Pace, Subscription)
+│   │   └── comedy.py            # Comedy creation flow (Topic -> Style -> Actors -> Generate)
+│   │
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── generation.py        # Strict JSON/timeline validation & atomic SQLite save
+│   │   ├── ideas.py             # News evidence retrieval & strict citation verification
+│   │   ├── refinements.py       # Shorten, regenerate & 3 structured hook alternatives
+│   │   └── broadcast.py         # Generate general daily ideas once outside subscriber loop
+│   │
+│   └── jobs.py                  # Telegram JobQueue daily broadcast scheduler
+│
+├── tests/
+│   ├── test_navigation.py       # Screen stack, Back/Home transitions, UserKey isolation
+│   ├── test_creation.py         # All 6 formats, comedy, durations, retry snapshot
+│   ├── test_ideas_flow.py       # Evidence retrieval, citation validation, draft transfer
+│   ├── test_refinements.py      # Shorten, hook generation/application, zero-AI view switching
+│   ├── test_settings.py         # Duration setting, pace calibration, subscription toggles
+│   ├── test_task_manager.py     # Request tracking, concurrency blocking, cancellation
+│   ├── test_storage.py          # SQLite transactions, failure isolation, JSON file migration
+│   └── test_callbacks.py        # 64-byte callback limit, token validation, security
+│
+├── test_timestamped_scripts.py  # Preserved comprehensive shooting plan & validation tests
+├── test_news_grounding.py       # Preserved news grounding & citation verification tests
+├── requirements.txt
+├── .env.example
+└── README.md
+```
+
+---
+
+## 💾 ការផ្ទុកទិន្នន័យ និងដែនកំណត់ Hosting (Storage & Durability)
+
+- **SQLite Database**: ប្រើប្រាស់ Python standard-library `sqlite3` ជាមួយ Parameterized queries ការពារ SQL injection និងប្រតិបត្តិការក្នុង Short transactions។
+- **UserKey Isolation**: គន្លឹះសម្គាល់អ្នកប្រើ `UserKey(chat_id, user_id)` ការពារកុំឱ្យអ្នកប្រើផ្សេងគ្នាក្នុង Group chat ច្រឡំ Draft, Settings ឬ Script ផ្ទាល់ខ្លួន។
+- **Atomic Script Saving**: ការរក្សាទុក Script ជោគជ័យ និងការ Update `last_successful_scripts` ប្រព្រឹត្តទៅក្នុង Transaction តែមួយ (Atomic)។ បើមាន Error បរាជ័យ Script ជោគជ័យចាស់មិនត្រូវបានបាត់បង់ឡើយ។
+- **Safe JSON Migration**: រៀបចំ Migration ស្វ័យប្រវត្តិតែម្ដងគត់ពី `user_settings.json` និង `subscribers.json` ចាស់ដោយមិនលុប File ដើមឡើយ។
+- ⚠️ **ចំណាំអំពី Durability លើ Cloud Hosting**: ការប្រើប្រាស់ SQLite លើ Container Filesystem បណ្តោះអាសន្ន (Ephemeral Filesystem ដូចជា Render.com Free Web Service) គឺ **មិនជាប់ជានិរន្តរ៍ (Not durable)** នៅពេល Server ត្រូវ Replace ឬ Redeploy ឡើយ។ ប្រសិនបើចង់បានទិន្នន័យយូរអង្វែង សូមភ្ជាប់ Persistent Disk ឬកំណត់ `BOT_DB_PATH` ទៅកាន់ Disk ខាងក្រៅ។
+
+---
+
+## 🧪 ការរត់ Unit Tests (Testing & Verification)
+
+រត់ Test ទាំងអស់ដោយគ្មានការចំណាយ និងគ្មានការហៅ Gemini API ផ្ទាល់ (Mocked 100%):
+
+```powershell
+# រត់ Tests ទាំងអស់ក្នុងគម្រោង (69 Tests)
+.\venv\Scripts\python.exe -m unittest discover -s . -p "test_*.py"
+
+# ឬរត់តាម Folder tests/
+.\venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+```
