@@ -20,6 +20,7 @@ from app.views import (
     render_pace_sample_instruction,
 )
 from app.handlers.commands import get_user_key, status_command
+from app.telegram_io import safe_edit, safe_reply
 from script_models import count_khmer_dialogue_units
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
             "_សូមជ្រើសរើសរយៈពេលដែលអ្នកចង់កំណត់ជា Default ខាងក្រោម៖_"
         )
         keyboard = get_default_duration_keyboard(settings["duration"])
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     # ── Set Duration ──────────────────────────
     elif action == "dur" or action.startswith("dur:"):
@@ -62,13 +63,13 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
         is_subbed = storage.is_subscribed(user_key)
         msg = f"✅ *បានកំណត់រយៈពេល {dur} ជាផ្លូវការ!*\n\n" + render_settings(dur, settings["pace"], is_subbed)
         keyboard = get_settings_keyboard(dur, is_subbed)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     # ── Pace Calibration Flow ─────────────────
     elif action == "pace":
         navigation.go_to(user_key, Screens.PACE_SECONDS)
         msg = render_pace_sample_instruction(FIXED_KHMER_PACE_SAMPLE)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_back_home_keyboard())
+        await safe_edit(query, msg, reply_markup=get_back_home_keyboard())
 
     # ── Subscription Toggle ───────────────────
     elif action == "sub_toggle":
@@ -80,7 +81,7 @@ async def handle_settings_callback(update: Update, context: ContextTypes.DEFAULT
         status_note = "✅ *បានបើកទទួលគំនិតប្រចាំថ្ងៃ (08:00)!*" if new_status else "🔕 *បានបិទការទទួលគំនិតប្រចាំថ្ងៃ!*"
         msg = f"{status_note}\n\n" + render_settings(settings["duration"], settings["pace"], new_status)
         keyboard = get_settings_keyboard(settings["duration"], new_status)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     # ── System Status ─────────────────────────
     elif action == "status":
@@ -134,4 +135,4 @@ async def handle_pace_seconds_input(update: Update, context: ContextTypes.DEFAUL
         + render_settings(settings["duration"], calculated_pace, is_subbed)
     )
     keyboard = get_settings_keyboard(settings["duration"], is_subbed)
-    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+    await safe_reply(update.message, msg, reply_markup=keyboard)

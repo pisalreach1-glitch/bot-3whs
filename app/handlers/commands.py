@@ -44,12 +44,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = get_main_menu_keyboard()
 
     if update.callback_query:
-        try:
-            await update.callback_query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
-        except Exception:
-            await target.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
-    else:
-        await target.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(update.callback_query, msg, reply_markup=keyboard)
+    elif target:
+        await safe_reply(target, msg, reply_markup=keyboard)
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancels active generation task and returns to main menu while preserving last successful script."""

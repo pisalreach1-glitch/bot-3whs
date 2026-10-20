@@ -12,6 +12,7 @@ Architecture:
 
 import os
 import sys
+import uuid
 import logging
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -36,7 +37,7 @@ from telegram.ext import (
 )
 
 from config import load_config, AppConfig
-from app.models import UserKey
+from app.models import UserKey, Draft
 from app.storage import Storage
 from app.task_manager import task_manager, TaskManager
 from app.navigation import navigation, Screens
@@ -76,13 +77,15 @@ from app.handlers.comedy import handle_comedy_callback
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+    level=logging.INFO,
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger(__name__)
 
 # Default instances for backward compatibility
 default_storage = Storage()
 default_ai = AIService()
+ai_service = default_ai
 
 # ─────────────────────────────────────────────
 # Health Check (Render.com)

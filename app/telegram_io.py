@@ -34,7 +34,12 @@ def split_message(text: str, max_length: int = 4000) -> List[str]:
 async def safe_reply(target, text: str, reply_markup=None):
     """Sends message with Markdown parse mode, falling back to plain text if syntax fails."""
     chunks = split_message(text)
-    msg_target = target.message if hasattr(target, "message") and target.message else target
+    if hasattr(target, "reply_text"):
+        msg_target = target
+    elif hasattr(target, "message") and target.message:
+        msg_target = target.message
+    else:
+        msg_target = target
     for i, chunk in enumerate(chunks):
         markup = reply_markup if i == len(chunks) - 1 else None
         try:

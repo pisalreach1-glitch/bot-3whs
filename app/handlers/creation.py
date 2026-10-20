@@ -71,7 +71,7 @@ async def handle_format_callback(update: Update, context: ContextTypes.DEFAULT_T
     navigation.go_to(user_key, Screens.TOPIC_OR_IDEAS, draft_id=draft.id)
 
     msg = render_topic_or_ideas(draft.format_id, draft.niche)
-    await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_topic_or_ideas_keyboard(draft))
+    await safe_edit(query, msg, reply_markup=get_topic_or_ideas_keyboard(draft))
 
 async def handle_draft_duration_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles d:<draft_token>:<revision>:<seconds>"""
@@ -105,7 +105,7 @@ async def handle_draft_duration_callback(update: Update, context: ContextTypes.D
     settings = storage.get_settings(user_key)
     msg = render_review(draft, settings["pace"])
     keyboard = get_review_keyboard(draft)
-    await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+    await safe_edit(query, msg, reply_markup=keyboard)
 
 async def handle_generate_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles g:<draft_token>:<revision> (Explicit Generate Action)"""
@@ -236,10 +236,10 @@ async def handle_retry_callback(update: Update, context: ContextTypes.DEFAULT_TY
             )
             summary_msg = render_script_summary(result.script, settings["pace"])
             actions_kb = get_script_actions_keyboard(result.script)
-            await status_msg.edit_text(summary_msg, parse_mode="Markdown", reply_markup=actions_kb)
+            await safe_edit(status_msg, summary_msg, reply_markup=actions_kb)
         else:
             fail_msg = render_failure(result.error_code or "ERROR", result.user_message_km)
             fail_kb = get_failure_keyboard(request.id)
-            await status_msg.edit_text(fail_msg, parse_mode="Markdown", reply_markup=fail_kb)
+            await safe_edit(status_msg, fail_msg, reply_markup=fail_kb)
     finally:
         await task_mgr.finish_request(user_key, token)

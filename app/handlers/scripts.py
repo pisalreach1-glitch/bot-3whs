@@ -204,6 +204,6 @@ async def handle_hook_pick_callback(update: Update, context: ContextTypes.DEFAUL
         settings = storage.get_settings(user_key)
         navigation.go_to(user_key, Screens.SCRIPT_SUMMARY, script_id=res.script.id, script_version=res.script.version)
         msg = f"✅ *បានអនុវត្តជម្រើស Hook ទី {opt_idx} ជោគជ័យ!* (បង្កើតជាកំណែទី {res.script.version})\n\n" + render_script_summary(res.script, settings["pace"])
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_script_actions_keyboard(res.script))
+        await safe_edit(query, msg, reply_markup=get_script_actions_keyboard(res.script))
     else:
-        await query.message.reply_text(res.user_message_km, parse_mode="Markdown")
+        await safe_reply(query.message, res.user_message_km)

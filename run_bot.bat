@@ -12,5 +12,7 @@ if not exist ".env" (
     exit /b
 )
 
+set PYTHONUTF8=1
+set PYTHONIOENCODING=utf-8
 .\venv\Scripts\python.exe bot.py
 pause

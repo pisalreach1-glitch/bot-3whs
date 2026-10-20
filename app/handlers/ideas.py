@@ -15,6 +15,7 @@ from app.keyboards import get_ideas_keyboard, get_review_keyboard, get_back_home
 from app.views import render_ideas_batch, render_review
 from app.services.ideas import get_or_generate_ideas
 from app.handlers.commands import get_user_key
+from app.telegram_io import safe_edit, safe_reply
 from script_models import parse_duration_seconds
 
 logger = logging.getLogger(__name__)
@@ -58,13 +59,13 @@ async def start_ideas_flow(
         if failure_msg or not ideas:
             # Sourced generation rejected due to citation failure or error
             err_text = failure_msg or "⚠️ មិនអាចបង្កើតគំនិតមាតិកាបានឡើយ។"
-            await status_msg.edit_text(err_text, parse_mode="Markdown", reply_markup=get_back_home_keyboard())
+            await safe_edit(status_msg, err_text, reply_markup=get_back_home_keyboard())
             return
 
         navigation.go_to(user_key, Screens.IDEA_RESULTS, draft_id=draft_id)
         ideas_text = render_ideas_batch(ideas, evidence, category)
         keyboard = get_ideas_keyboard(batch_token, len(ideas))
-        await status_msg.edit_text(ideas_text, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(status_msg, ideas_text, reply_markup=keyboard)
 
     finally:
         await task_mgr.finish_request(user_key, token)
@@ -138,4 +139,4 @@ async def handle_idea_pick_callback(update: Update, context: ContextTypes.DEFAUL
         + render_review(draft, settings["pace"])
     )
     keyboard = get_review_keyboard(draft)
-    await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+    await safe_edit(query, msg, reply_markup=keyboard)

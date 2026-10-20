@@ -16,6 +16,7 @@ from app.navigation import navigation, Screens
 from app.callbacks import decode_callback
 from app.keyboards import get_comedy_actors_keyboard, get_back_home_keyboard
 from app.handlers.commands import get_user_key
+from app.telegram_io import safe_edit
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ async def handle_comedy_callback(update: Update, context: ContextTypes.DEFAULT_T
             "សូមជ្រើសរើសចំនួនតួអង្គដែលអ្នកចង់ឱ្យសម្ដែងក្នុងវីដេអូ៖"
         )
         keyboard = get_comedy_actors_keyboard(draft)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     # 2. Select Actors -> go to Topic Input
     elif decoded.action == "act":
@@ -77,4 +78,4 @@ async def handle_comedy_callback(update: Update, context: ContextTypes.DEFAULT_T
             "• «ថ្ងៃដំបូងចូលធ្វើការ ធ្វើចេះគ្រប់រឿង»\n"
             "• «ពេលសុំច្បាប់មេ តែចៃដន្យជួបមេនៅផ្សារ»"
         )
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_back_home_keyboard())
+        await safe_edit(query, msg, reply_markup=get_back_home_keyboard())
