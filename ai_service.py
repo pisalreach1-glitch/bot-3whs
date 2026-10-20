@@ -23,6 +23,7 @@ class AIService:
         self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
         self.client = None
         self.sdk_type = None
+        self.last_api_status = "មិនទាន់បានតេស្ត"
         self._init_client()
 
     def _init_client(self):
@@ -57,12 +58,20 @@ class AIService:
     def is_configured(self) -> bool:
         return bool(self.api_key and self.client)
 
+    def get_status_info(self) -> dict:
+        return {
+            "configured": self.is_configured(),
+            "sdk": self.sdk_type or "មិនទាន់ភ្ជាប់",
+            "last_status": getattr(self, "last_api_status", "ធម្មតា"),
+        }
+
     async def generate_response(self, prompt: str) -> str:
         """Generate response from Gemini AI with automatic fallback models."""
         if not self.is_configured():
             self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
             self._init_client()
             if not self.is_configured():
+                self.last_api_status = "🔴 ខ្វះ API Key"
                 return "⚠️ សូមបញ្ចូល `GEMINI_API_KEY` នៅក្នុង file `.env` ជាមុនសិន!"
 
         models_to_try = [
@@ -85,6 +94,7 @@ class AIService:
                         )
                     )
                     if response and response.text:
+                        self.last_api_status = "🟢 ដំណើរការល្អ (Online)"
                         return response.text
                 elif self.sdk_type == "google-generativeai":
                     import google.generativeai as genai_legacy
@@ -94,16 +104,29 @@ class AIService:
                     )
                     response = model.generate_content(prompt)
                     if response and response.text:
+                        self.last_api_status = "🟢 ដំណើរការល្អ (Online)"
                         return response.text
             except Exception as e:
-                logger.warning(f"Model {model_name} failed: {e}. Trying fallback...")
+                err_str = str(e)
+                logger.warning(f"Model {model_name} failed: {err_str}. Trying fallback...")
                 last_error = e
                 continue
 
+        # Handle final failure
+        err_msg = str(last_error).lower()
+        if "429" in err_msg or "quota" in err_msg or "exhausted" in err_msg:
+            self.last_api_status = "⚠️ Quota Limit (កំពុងរង់ចាំ Reset)"
+            return (
+                "⚠️ **ប្រព័ន្ធ AI ដល់កម្រិតកំណត់បណ្ដោះអាសន្ន (Quota Limit)**\n\n"
+                "Google Gemini Free Tier កំពុងរង់ចាំសម្រាកបន្តិច។\n"
+                "👉 សូមរង់ចាំប្រហែល **៣០ ទៅ ៦០ វិនាទី** រួចចុចប៊ូតុង **[🔁 បង្កើតម្ដងទៀត]** នោះវានឹងដំណើរការជាធម្មតាវិញភ្លាម!"
+            )
+
+        self.last_api_status = f"🔴 Error: {str(last_error)[:50]}"
         return (
             f"❌ **AI ស្ថានភាពមមាញឹក (High Demand)**\n\n"
-            f"Error: {str(last_error)}\n\n"
-            "🔄 _សូមសាកល្បងម្ដងទៀតក្នុងរយៈពេល ១-២ នាទី!_"
+            f"មូលហេតុ: {str(last_error)}\n\n"
+            "🔄 _សូមចុចប៊ូតុង [🔁 បង្កើតម្ដងទៀត] ក្នុងរយៈពេល ១-២ នាទី!_"
         )
 
     # ─────────────────────────────────────────────

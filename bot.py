@@ -360,13 +360,26 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         await target.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
 
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancels any pending action and returns to main menu."""
+    context.user_data.clear()
+    chat_id = update.effective_chat.id
+    msg = (
+        "🚫 *បានបោះបង់សំណើជោគជ័យ!* ត្រឡប់ទៅកាន់ Menu ដើមវិញ។\n\n"
+        + render_welcome(chat_id)
+    )
+    keyboard = get_main_menu_keyboard()
+    target = update.message or (update.callback_query.message if update.callback_query else None)
+    await safe_reply(target, msg, reply_markup=keyboard)
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "📖 *ការណែនាំប្រើប្រាស់ Bot*\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "🔹 /start — បង្ហាញ Menu ទម្រង់ Content ទាំង ៦\n"
+        "🔹 /cancel — បោះបង់សំណើដែលកំពុងធ្វើ ហើយត្រឡប់ទៅ Menu\n"
         "🔹 /ideas — បង្កើតគំនិតមាតិកា Viral ថ្មីៗ\n"
-        "🔹 /status — ពិនិត្យស្ថានភាពប្រព័ន្ធ\n"
+        "🔹 /status — ពិនិត្យស្ថានភាពប្រព័ន្ធ និង API\n"
         "🔹 /subscribe — ទទួលគំនិតមាតិការៀងរាល់ព្រឹក\n"
         "🔹 /unsubscribe — បិទការទទួលសារប្រចាំព្រឹក\n\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
@@ -390,14 +403,18 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     duration = get_user_duration(chat_id)
     is_subbed = chat_id in subscribers
-    is_ai_ok = ai_service.is_configured()
+    api_info = ai_service.get_status_info()
     text = (
-        "📊 *ស្ថានភាពប្រព័ន្ធ (System Status)*\n"
+        "📊 *ស្ថានភាពប្រព័ន្ធលម្អិត (System Status)*\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         f"• ⏱️ រយៈពេលវីដេអូ: *{duration}*\n"
-        f"• 🔔 Subscribe ប្រចាំថ្ងៃ: {'✅ បើក' if is_subbed else '❌ មិនទាន់'}\n"
-        f"• 🧠 AI Engine: {'🟢 ដំណើរការធម្មតា' if is_ai_ok else '🔴 គ្មាន API Key'}\n"
-        "━━━━━━━━━━━━━━━━━━━━━"
+        f"• 🔔 Subscribe ប្រចាំថ្ងៃ: {'✅ បើក (ម៉ោង 08:00)' if is_subbed else '❌ មិនទាន់'}\n"
+        f"• 👥 អ្នក Subscribe សរុប: *{len(subscribers)} នាក់*\n"
+        f"• 🔑 Gemini API Key: {'✅ បានកំណត់រួចរាល់' if api_info['configured'] else '❌ មិនទាន់កំណត់'}\n"
+        f"• ⚙️ AI Engine: *{api_info['sdk']}*\n"
+        f"• 🟢 ស្ថានភាព API ចុងក្រោយ: *{api_info['last_status']}*\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "💡 _ប្រើ /cancel ដើម្បីបោះបង់សំណើពេលណាក៏បាន!_"
     )
     target = update.message if update.message else update.callback_query.message
     await safe_reply(target, text)
@@ -521,6 +538,11 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         await query.answer()
         await status_command(update, context)
 
+    # Anti-spam guard: if an AI request is in-flight, reject extra clicks on AI buttons
+    if context.user_data.get("is_processing") and (data.startswith("refine:") or data == "ideas"):
+        await query.answer("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!", show_alert=True)
+        return
+
     # ── Refine: Change Hook ───────────────────
     elif data == "refine:hook":
         last_script = context.user_data.get("last_script")
@@ -529,13 +551,17 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             return
         await query.answer("🎣 កំពុងបង្កើត Hook ថ្មី...")
         status_msg = await query.message.reply_text("🎣 *កំពុងបង្កើតជម្រើស Hook ថ្មីទាំង ៣ បែប...*")
-        hook_response = await ai_service.refine_hook(last_script)
-        await safe_edit(status_msg, hook_response)
-        await query.message.reply_text(
-            "💡 *អ្នកអាចជ្រើស Hook ខាងលើទៅជំនួសបាន!* តើចង់កែអ្វីបន្តទៀត?",
-            parse_mode="Markdown",
-            reply_markup=get_done_keyboard()
-        )
+        try:
+            context.user_data["is_processing"] = True
+            hook_response = await ai_service.refine_hook(last_script)
+            await safe_edit(status_msg, hook_response)
+            await query.message.reply_text(
+                "💡 *អ្នកអាចជ្រើស Hook ខាងលើទៅជំនួសបាន!* តើចង់កែអ្វីបន្តទៀត?",
+                parse_mode="Markdown",
+                reply_markup=get_done_keyboard()
+            )
+        finally:
+            context.user_data["is_processing"] = False
 
     # ── Refine: Shorten ───────────────────────
     elif data == "refine:shorten":
@@ -545,14 +571,18 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             return
         await query.answer("✂️ កំពុងសង្ខេបឱ្យខ្លី...")
         status_msg = await query.message.reply_text("✂️ *កំពុងកែសម្រួលឱ្យខ្លី ខ្លឹម និង Fast-paced ជាងមុន...*")
-        short_response = await ai_service.refine_shorten(last_script)
-        context.user_data["last_script"] = short_response
-        await safe_edit(status_msg, short_response)
-        await query.message.reply_text(
-            "✅ *Script កែសម្រួលរួចរាល់!* តើចង់ធ្វើអ្វីបន្តទៀត?",
-            parse_mode="Markdown",
-            reply_markup=get_done_keyboard()
-        )
+        try:
+            context.user_data["is_processing"] = True
+            short_response = await ai_service.refine_shorten(last_script)
+            context.user_data["last_script"] = short_response
+            await safe_edit(status_msg, short_response)
+            await query.message.reply_text(
+                "✅ *Script កែសម្រួលរួចរាល់!* តើចង់ធ្វើអ្វីបន្តទៀត?",
+                parse_mode="Markdown",
+                reply_markup=get_done_keyboard()
+            )
+        finally:
+            context.user_data["is_processing"] = False
 
     # ── Refine: Regenerate ────────────────────
     elif data == "refine:regen":
@@ -569,19 +599,23 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             f"_ប្រធានបទ: {last_topic}_\n"
             f"_រយៈពេល: {duration}_"
         )
-        new_response = await ai_service.generate_content_by_type(
-            content_type=last_ct,
-            topic=last_topic,
-            niche=last_topic,
-            duration=duration,
-        )
-        context.user_data["last_script"] = new_response
-        await safe_edit(status_msg, new_response)
-        await query.message.reply_text(
-            f"✅ *{ct['emoji']} {ct['name']} (កំណែថ្មី) រួចរាល់!*",
-            parse_mode="Markdown",
-            reply_markup=get_done_keyboard()
-        )
+        try:
+            context.user_data["is_processing"] = True
+            new_response = await ai_service.generate_content_by_type(
+                content_type=last_ct,
+                topic=last_topic,
+                niche=last_topic,
+                duration=duration,
+            )
+            context.user_data["last_script"] = new_response
+            await safe_edit(status_msg, new_response)
+            await query.message.reply_text(
+                f"✅ *{ct['emoji']} {ct['name']} (កំណែថ្មី) រួចរាល់!*",
+                parse_mode="Markdown",
+                reply_markup=get_done_keyboard()
+            )
+        finally:
+            context.user_data["is_processing"] = False
 
 # ─────────────────────────────────────────────
 # Message Handler (State Machine)
@@ -595,6 +629,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── STATE: Awaiting user's topic for chosen format ──
     if state == "awaiting_topic":
+        if context.user_data.get("is_processing"):
+            await update.message.reply_text("⏳ Bot កំពុងគិត និងសរសេរ Script... សូមរង់ចាំមួយភ្លែត!")
+            return
+
         content_type = context.user_data.get("content_type", "3whs")
         duration = get_user_duration(update.effective_chat.id)
         ct = CONTENT_TYPES.get(content_type, CONTENT_TYPES["3whs"])
@@ -610,28 +648,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "សូមរង់ចាំមួយភ្លែត..."
         )
 
-        # Generate content with Gemini
-        response = await ai_service.generate_content_by_type(
-            content_type=content_type,
-            topic=user_text,
-            niche=user_text,
-            duration=duration,
-        )
-        await safe_edit(status_msg, response)
+        try:
+            context.user_data["is_processing"] = True
+            # Generate content with Gemini
+            response = await ai_service.generate_content_by_type(
+                content_type=content_type,
+                topic=user_text,
+                niche=user_text,
+                duration=duration,
+            )
+            await safe_edit(status_msg, response)
 
-        # Store for refinement buttons
-        context.user_data["last_script"] = response
-        context.user_data["last_topic"] = user_text
-        context.user_data["last_content_type"] = content_type
-        context.user_data["last_duration"] = duration
+            # Store for refinement buttons
+            context.user_data["last_script"] = response
+            context.user_data["last_topic"] = user_text
+            context.user_data["last_content_type"] = content_type
+            context.user_data["last_duration"] = duration
 
-        # Show quick action buttons after done
-        await update.message.reply_text(
-            f"✅ *{ct['emoji']} {ct['name']} រួចរាល់!*\n"
-            "តើអ្នកចង់កែសម្រួល ឬផលិត Content អ្វីបន្តទៀត?",
-            parse_mode="Markdown",
-            reply_markup=get_done_keyboard()
-        )
+            # Show quick action buttons after done
+            await update.message.reply_text(
+                f"✅ *{ct['emoji']} {ct['name']} រួចរាល់!*\n"
+                "តើអ្នកចង់កែសម្រួល ឬផលិត Content អ្វីបន្តទៀត?",
+                parse_mode="Markdown",
+                reply_markup=get_done_keyboard()
+            )
+        finally:
+            context.user_data["is_processing"] = False
 
     # ── Default: Free-text AI chat ────────────
     else:
@@ -676,6 +718,7 @@ def main():
 
     # Commands
     application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("cancel", cancel_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("ideas", ideas_command))
     application.add_handler(CommandHandler("subscribe", subscribe_command))
