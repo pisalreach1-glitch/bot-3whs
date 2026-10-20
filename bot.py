@@ -258,6 +258,12 @@ async def safe_edit(status_msg, text: str):
         except Exception:
             await status_msg.reply_text(chunk)
 
+def is_error_response(text: str) -> bool:
+    if not text:
+        return True
+    s = text.strip()
+    return s.startswith("⚠️") or s.startswith("❌") or "Error:" in s
+
 # ─────────────────────────────────────────────
 # Keyboards (Option 2 - Direct to Content Formats)
 # ─────────────────────────────────────────────
@@ -347,7 +353,8 @@ def render_settings(chat_id: int) -> str:
 # ─────────────────────────────────────────────
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Directly shows the Main Content Format Menu."""
-    context.user_data.clear()
+    context.user_data["state"] = None
+    context.user_data["is_processing"] = False
     chat_id = update.effective_chat.id
     msg = render_welcome(chat_id)
     keyboard = get_main_menu_keyboard()
@@ -362,7 +369,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancels any pending action and returns to main menu."""
-    context.user_data.clear()
+    context.user_data["state"] = None
+    context.user_data["is_processing"] = False
     chat_id = update.effective_chat.id
     msg = (
         "🚫 *បានបោះបង់សំណើជោគជ័យ!* ត្រឡប់ទៅកាន់ Menu ដើមវិញ។\n\n"
@@ -390,14 +398,21 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ideas_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = update.message if update.message else update.callback_query.message
+    if context.user_data.get("is_processing"):
+        await safe_reply(target, "⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!")
+        return
     status_msg = await target.reply_text("💡 *កំពុងបង្កើតគំនិតមាតិកា Viral ថ្មីៗ...*")
-    response = await ai_service.generate_daily_ideas("មាតិកាទូទៅ និងអាជីវកម្ម")
-    await safe_edit(status_msg, response)
-    await target.reply_text(
-        "✅ *គំនិតខាងលើ!* តើអ្នកចង់ជ្រើស Format ណាមួយដើម្បីបង្កើត Script?",
-        parse_mode="Markdown",
-        reply_markup=get_done_keyboard()
-    )
+    try:
+        context.user_data["is_processing"] = True
+        response = await ai_service.generate_daily_ideas("មាតិកាទូទៅ និងអាជីវកម្ម")
+        await safe_edit(status_msg, response)
+        await target.reply_text(
+            "✅ *គំនិតខាងលើ!* តើអ្នកចង់ជ្រើស Format ណាមួយដើម្បីបង្កើត Script?",
+            parse_mode="Markdown",
+            reply_markup=get_done_keyboard()
+        )
+    finally:
+        context.user_data["is_processing"] = False
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -455,7 +470,8 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 
     # ── Return to Main Menu ────────────────────
     if data == "main_menu":
-        context.user_data.clear()
+        context.user_data["state"] = None
+        context.user_data["is_processing"] = False
         await query.answer()
         msg = render_welcome(chat_id)
         keyboard = get_main_menu_keyboard()
@@ -496,15 +512,22 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 
     # ── Ideas Button ──────────────────────────
     elif data == "ideas":
+        if context.user_data.get("is_processing"):
+            await query.answer("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!", show_alert=True)
+            return
         await query.answer("💡 កំពុងបង្កើតគំនិត...")
         status_msg = await query.message.reply_text("💡 *កំពុងបង្កើតគំនិតមាតិកា Viral ថ្មីៗ...*")
-        response = await ai_service.generate_daily_ideas("មាតិកាទូទៅ និងអាជីវកម្ម")
-        await safe_edit(status_msg, response)
-        await query.message.reply_text(
-            "✅ *គំនិតខាងលើ!* ចង់ជ្រើស Format ណាមួយដើម្បីផលិត Script?",
-            parse_mode="Markdown",
-            reply_markup=get_done_keyboard()
-        )
+        try:
+            context.user_data["is_processing"] = True
+            response = await ai_service.generate_daily_ideas("មាតិកាទូទៅ និងអាជីវកម្ម")
+            await safe_edit(status_msg, response)
+            await query.message.reply_text(
+                "✅ *គំនិតខាងលើ!* ចង់ជ្រើស Format ណាមួយដើម្បីផលិត Script?",
+                parse_mode="Markdown",
+                reply_markup=get_done_keyboard()
+            )
+        finally:
+            context.user_data["is_processing"] = False
 
     # ── Settings Button ───────────────────────
     elif data == "settings":
@@ -574,10 +597,14 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         try:
             context.user_data["is_processing"] = True
             short_response = await ai_service.refine_shorten(last_script)
-            context.user_data["last_script"] = short_response
             await safe_edit(status_msg, short_response)
+            if not is_error_response(short_response):
+                context.user_data["last_script"] = short_response
+                notice = "✅ *Script កែសម្រួលរួចរាល់!* តើចង់ធ្វើអ្វីបន្តទៀត?"
+            else:
+                notice = "⚠️ *ការកែសម្រួលមិនទាន់ជោគជ័យ!* អ្នកអាចសាកល្បងម្ដងទៀត:"
             await query.message.reply_text(
-                "✅ *Script កែសម្រួលរួចរាល់!* តើចង់ធ្វើអ្វីបន្តទៀត?",
+                notice,
                 parse_mode="Markdown",
                 reply_markup=get_done_keyboard()
             )
@@ -607,10 +634,14 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                 niche=last_topic,
                 duration=duration,
             )
-            context.user_data["last_script"] = new_response
             await safe_edit(status_msg, new_response)
+            if not is_error_response(new_response):
+                context.user_data["last_script"] = new_response
+                notice = f"✅ *{ct['emoji']} {ct['name']} (កំណែថ្មី) រួចរាល់!*"
+            else:
+                notice = "⚠️ *ការបង្កើតឡើងវិញមិនទាន់ជោគជ័យ!* អ្នកអាចសាកល្បងម្ដងទៀត:"
             await query.message.reply_text(
-                f"✅ *{ct['emoji']} {ct['name']} (កំណែថ្មី) រួចរាល់!*",
+                notice,
                 parse_mode="Markdown",
                 reply_markup=get_done_keyboard()
             )
@@ -659,16 +690,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await safe_edit(status_msg, response)
 
-            # Store for refinement buttons
-            context.user_data["last_script"] = response
-            context.user_data["last_topic"] = user_text
-            context.user_data["last_content_type"] = content_type
-            context.user_data["last_duration"] = duration
+            # Store for refinement buttons only if successful
+            if not is_error_response(response):
+                context.user_data["last_script"] = response
+                context.user_data["last_topic"] = user_text
+                context.user_data["last_content_type"] = content_type
+                context.user_data["last_duration"] = duration
+                notice = f"✅ *{ct['emoji']} {ct['name']} រួចរាល់!*\nតើអ្នកចង់កែសម្រួល ឬផលិត Content អ្វីបន្តទៀត?"
+            else:
+                notice = "⚠️ *ការបង្កើតមិនទាន់ជោគជ័យពេញលេញទេ!*\nអ្នកអាចចុច [🔁 បង្កើតម្ដងទៀត] ដើម្បីសាកល្បងម្ដងទៀត។"
 
             # Show quick action buttons after done
             await update.message.reply_text(
-                f"✅ *{ct['emoji']} {ct['name']} រួចរាល់!*\n"
-                "តើអ្នកចង់កែសម្រួល ឬផលិត Content អ្វីបន្តទៀត?",
+                notice,
                 parse_mode="Markdown",
                 reply_markup=get_done_keyboard()
             )
@@ -677,9 +711,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Default: Free-text AI chat ────────────
     else:
-        await update.message.chat.send_action("typing")
-        response = await ai_service.chat(user_text)
-        await safe_reply(update.message, response)
+        if context.user_data.get("is_processing"):
+            await update.message.reply_text("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!")
+            return
+        try:
+            context.user_data["is_processing"] = True
+            await update.message.chat.send_action("typing")
+            response = await ai_service.chat(user_text)
+            await safe_reply(update.message, response)
+        finally:
+            context.user_data["is_processing"] = False
 
 # ─────────────────────────────────────────────
 # Daily Scheduler Broadcast
@@ -688,21 +729,34 @@ async def send_daily_content(context: ContextTypes.DEFAULT_TYPE):
     logger.info("Daily broadcast starting...")
     if not subscribers:
         return
-    for chat_id in list(subscribers):
-        try:
-            content = await ai_service.generate_daily_ideas("មាតិកាទូទៅ និងអាជីវកម្ម")
-            msg = (
-                "☀️ *អរុណសួស្តី! គំនិតមាតិកា Viral ថ្ងៃនេះ* 💡\n"
-                "━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"{content}\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━\n"
-                "💡 _ចុច /start ដើម្បីជ្រើសរើស Content Type រួចបង្កើត Script ភ្លាមៗ!_"
-            )
-            await context.bot.send_message(
-                chat_id=chat_id, text=msg, parse_mode="Markdown"
-            )
-        except Exception as e:
-            logger.error(f"Daily broadcast failed for {chat_id}: {e}")
+    try:
+        # Generate ideas ONCE for all subscribers to save Quota
+        content = await ai_service.generate_daily_ideas("មាតិកាទូទៅ និងអាជីវកម្ម")
+        if is_error_response(content):
+            logger.warning("Daily broadcast generated an error response, aborting broadcast.")
+            return
+
+        msg = (
+            "☀️ *អរុណសួស្តី! គំនិតមាតិកា Viral ថ្ងៃនេះ* 💡\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"{content}\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "💡 _ចុច /start ដើម្បីជ្រើសរើស Content Type រួចបង្កើត Script ភ្លាមៗ!_"
+        )
+        chunks = split_message(msg)
+        for chat_id in list(subscribers):
+            for chunk in chunks:
+                try:
+                    await context.bot.send_message(
+                        chat_id=chat_id, text=chunk, parse_mode="Markdown"
+                    )
+                except Exception:
+                    try:
+                        await context.bot.send_message(chat_id=chat_id, text=chunk)
+                    except Exception as e:
+                        logger.error(f"Daily broadcast failed for {chat_id}: {e}")
+    except Exception as e:
+        logger.error(f"Daily broadcast error: {e}")
 
 # ─────────────────────────────────────────────
 # Main

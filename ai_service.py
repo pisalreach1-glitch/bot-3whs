@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 from dotenv import load_dotenv
 from prompts import (
@@ -65,22 +66,14 @@ class AIService:
             "last_status": getattr(self, "last_api_status", "ធម្មតា"),
         }
 
-    async def generate_response(self, prompt: str) -> str:
-        """Generate response from Gemini AI with automatic fallback models."""
-        if not self.is_configured():
-            self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
-            self._init_client()
-            if not self.is_configured():
-                self.last_api_status = "🔴 ខ្វះ API Key"
-                return "⚠️ សូមបញ្ចូល `GEMINI_API_KEY` នៅក្នុង file `.env` ជាមុនសិន!"
-
+    def _generate_sync(self, prompt: str) -> str:
         models_to_try = [
             "gemini-2.5-flash",
             "gemini-2.0-flash",
             "gemini-1.5-flash",
         ]
 
-        last_error = None
+        errors = []
         for model_name in models_to_try:
             try:
                 if self.sdk_type == "google-genai":
@@ -108,26 +101,37 @@ class AIService:
                         return response.text
             except Exception as e:
                 err_str = str(e)
-                logger.warning(f"Model {model_name} failed: {err_str}. Trying fallback...")
-                last_error = e
+                logger.warning(f"Model {model_name} failed: {err_str}")
+                errors.append(f"{model_name}: {err_str}")
                 continue
 
-        # Handle final failure
-        err_msg = str(last_error).lower()
-        if "429" in err_msg or "quota" in err_msg or "exhausted" in err_msg:
-            self.last_api_status = "⚠️ Quota Limit (កំពុងរង់ចាំ Reset)"
+        # Check if any errors were quota related
+        all_err_str = " ".join(errors).lower()
+        if "429" in all_err_str or "quota" in all_err_str or "exhausted" in all_err_str:
+            self.last_api_status = "⚠️ Quota Limit"
             return (
-                "⚠️ **ប្រព័ន្ធ AI ដល់កម្រិតកំណត់បណ្ដោះអាសន្ន (Quota Limit)**\n\n"
-                "Google Gemini Free Tier កំពុងរង់ចាំសម្រាកបន្តិច។\n"
-                "👉 សូមរង់ចាំប្រហែល **៣០ ទៅ ៦០ វិនាទី** រួចចុចប៊ូតុង **[🔁 បង្កើតម្ដងទៀត]** នោះវានឹងដំណើរការជាធម្មតាវិញភ្លាម!"
+                "⚠️ **ប្រព័ន្ធ AI ទទួលសំណើច្រើន ឬដល់កម្រិតកំណត់បណ្ដោះអាសន្ន (Quota Limit)**\n\n"
+                "Google Gemini Free Tier កំពុងរង់ចាំ Reset សំណើបន្តិច។\n"
+                "👉 សូមរង់ចាំមួយស្របក់ រួចចុចប៊ូតុង **[🔁 បង្កើតម្ដងទៀត]** នោះវានឹងដំណើរការវិញជាធម្មតា!"
             )
 
-        self.last_api_status = f"🔴 Error: {str(last_error)[:50]}"
+        self.last_api_status = f"🔴 Error: {errors[-1][:50] if errors else 'Unknown'}"
         return (
-            f"❌ **AI ស្ថានភាពមមាញឹក (High Demand)**\n\n"
-            f"មូលហេតុ: {str(last_error)}\n\n"
-            "🔄 _សូមចុចប៊ូតុង [🔁 បង្កើតម្ដងទៀត] ក្នុងរយៈពេល ១-២ នាទី!_"
+            f"❌ **AI មិនទាន់អាចឆ្លើយតបបាននៅពេលនេះ**\n\n"
+            f"មូលហេតុ: {errors[-1] if errors else 'High Demand'}\n\n"
+            "🔄 _សូមចុចប៊ូតុង [🔁 បង្កើតម្ដងទៀត] ក្នុងរយៈពេលខ្លីខាងមុខ!_"
         )
+
+    async def generate_response(self, prompt: str) -> str:
+        """Generate response asynchronously in a separate thread so it does not block the Telegram event loop."""
+        if not self.is_configured():
+            self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
+            self._init_client()
+            if not self.is_configured():
+                self.last_api_status = "🔴 ខ្វះ API Key"
+                return "⚠️ សូមបញ្ចូល `GEMINI_API_KEY` នៅក្នុង file `.env` ជាមុនសិន!"
+
+        return await asyncio.to_thread(self._generate_sync, prompt)
 
     # ─────────────────────────────────────────────
     # Content Type Methods
