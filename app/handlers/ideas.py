@@ -36,12 +36,20 @@ async def start_ideas_flow(
     if not category:
         category = storage.get_user_niche(user_key) or "ទូទៅ"
 
-    target = update.message or (update.callback_query.message if update.callback_query else None)
-    status_msg = await target.reply_text("💡 *កំពុងស្វែងរកព័ត៌មានថ្មីៗ និងរៀបចំគំនិតមាតិកា...*", parse_mode="Markdown")
+    query = update.callback_query
+    if query:
+        status_msg = query
+        await safe_edit(query, "💡 *កំពុងស្វែងរកព័ត៌មានថ្មីៗ និងរៀបចំគំនិតមាតិកា...*")
+    else:
+        target = update.message or (query.message if query else None)
+        status_msg = await target.reply_text("💡 *កំពុងស្វែងរកព័ត៌មានថ្មីៗ និងរៀបចំគំនិតមាតិកា...*", parse_mode="Markdown")
 
     token = await task_mgr.start_request(user_key, f"ideas_{uuid.uuid4().hex[:6]}")
     if token is None:
-        await target.reply_text("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!")
+        if query:
+            await query.answer("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!", show_alert=True)
+        elif target:
+            await target.reply_text("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!")
         return
 
     try:

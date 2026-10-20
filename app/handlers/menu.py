@@ -283,8 +283,8 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     # ── MENU: IDEAS CATEGORY SELECTED ─────────
-    elif action.startswith("ideacat:"):
-        cat_key = action.split(":", 1)[1]
+    elif action == "ideacat" or action.startswith("ideacat"):
+        cat_key = decoded.token or (action.split(":", 1)[1] if ":" in action else "cambodia")
         saved_niche = storage.get_user_niche(user_key)
         cat_map = {
             "cambodia": "🇰🇭 ព័ត៌មាន និងសង្គមកម្ពុជាថ្មីៗ",

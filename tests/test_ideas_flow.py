@@ -153,5 +153,44 @@ class TestIdeasFlow(unittest.TestCase):
             self.assertFalse("hooks" in cb)
             self.assertFalse("regen" in cb)
 
+    async def _async_test_ideas_category_menu_callback(self):
+        from app.handlers.menu import handle_menu_callback
+        from app.task_manager import TaskManager
+        
+        task_mgr = TaskManager()
+        ai_mock = MagicMock()
+        ai_mock._is_error_response = MagicMock(return_value=False)
+        ai_mock.generate_response = AsyncMock(return_value="""
+🔥 **គំនិតទី 1: ម្ហូបខ្មែរប្លែកៗ**
+🎯 **Hook**: តើអ្នកដឹងទេថាម្ហូបនេះមានប្រវត្តិយូរលង់?
+⚡ **ទម្រង់**: POV
+📌 **ខ្លឹមសារ**: ព័ត៌មានលម្អិត...
+""")
+        mock_update = MagicMock()
+        mock_update.effective_chat.id = 555
+        mock_update.effective_user.id = 777
+        mock_query = AsyncMock()
+        mock_query.data = "m:ideacat:food"
+        mock_query.message = AsyncMock()
+        mock_update.callback_query = mock_query
+
+        mock_context = MagicMock()
+        mock_context.bot_data = {
+            "storage": self.storage,
+            "ai": ai_mock,
+            "task_mgr": task_mgr,
+        }
+
+        with patch("app.handlers.menu.get_user_key", return_value=self.user), \
+             patch("app.handlers.ideas.get_user_key", return_value=self.user):
+            await handle_menu_callback(mock_update, mock_context)
+
+        self.assertTrue(mock_query.answer.called)
+        self.assertTrue(mock_query.edit_message_text.called)
+
+    def test_ideas_category_menu_callback(self):
+        asyncio.run(self._async_test_ideas_category_menu_callback())
+
 if __name__ == "__main__":
     unittest.main()
+
