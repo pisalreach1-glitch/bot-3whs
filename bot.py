@@ -300,12 +300,20 @@ def get_settings_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 def get_done_keyboard() -> InlineKeyboardMarkup:
-    """Action buttons after content is generated."""
+    """Action buttons after content is generated with Refinement tools."""
     return InlineKeyboardMarkup([
         [
+            InlineKeyboardButton("🎣 ប្តូរ Hook ថ្មី (៣ បែប)", callback_data="refine:hook"),
+            InlineKeyboardButton("✂️ សង្ខេបឱ្យខ្លីខ្លឹម", callback_data="refine:shorten"),
+        ],
+        [
+            InlineKeyboardButton("🔁 បង្កើតម្ដងទៀត", callback_data="refine:regen"),
             InlineKeyboardButton("🔄 ផលិត Content ថ្មី", callback_data="main_menu"),
+        ],
+        [
             InlineKeyboardButton("⚙️ ប្ដូររយៈពេល", callback_data="settings"),
-        ]
+            InlineKeyboardButton("🏠 Menu ដើម", callback_data="main_menu"),
+        ],
     ])
 
 # ─────────────────────────────────────────────
@@ -513,6 +521,68 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         await query.answer()
         await status_command(update, context)
 
+    # ── Refine: Change Hook ───────────────────
+    elif data == "refine:hook":
+        last_script = context.user_data.get("last_script")
+        if not last_script:
+            await query.answer("មិនមាន Script មុនដើម្បីកែប្រែទេ!")
+            return
+        await query.answer("🎣 កំពុងបង្កើត Hook ថ្មី...")
+        status_msg = await query.message.reply_text("🎣 *កំពុងបង្កើតជម្រើស Hook ថ្មីទាំង ៣ បែប...*")
+        hook_response = await ai_service.refine_hook(last_script)
+        await safe_edit(status_msg, hook_response)
+        await query.message.reply_text(
+            "💡 *អ្នកអាចជ្រើស Hook ខាងលើទៅជំនួសបាន!* តើចង់កែអ្វីបន្តទៀត?",
+            parse_mode="Markdown",
+            reply_markup=get_done_keyboard()
+        )
+
+    # ── Refine: Shorten ───────────────────────
+    elif data == "refine:shorten":
+        last_script = context.user_data.get("last_script")
+        if not last_script:
+            await query.answer("មិនមាន Script មុនដើម្បីកែប្រែទេ!")
+            return
+        await query.answer("✂️ កំពុងសង្ខេបឱ្យខ្លី...")
+        status_msg = await query.message.reply_text("✂️ *កំពុងកែសម្រួលឱ្យខ្លី ខ្លឹម និង Fast-paced ជាងមុន...*")
+        short_response = await ai_service.refine_shorten(last_script)
+        context.user_data["last_script"] = short_response
+        await safe_edit(status_msg, short_response)
+        await query.message.reply_text(
+            "✅ *Script កែសម្រួលរួចរាល់!* តើចង់ធ្វើអ្វីបន្តទៀត?",
+            parse_mode="Markdown",
+            reply_markup=get_done_keyboard()
+        )
+
+    # ── Refine: Regenerate ────────────────────
+    elif data == "refine:regen":
+        last_topic = context.user_data.get("last_topic")
+        last_ct = context.user_data.get("last_content_type", "3whs")
+        duration = get_user_duration(chat_id)
+        if not last_topic:
+            await query.answer("សូមជ្រើសរើស Content Type ជាថ្មី!")
+            return
+        ct = CONTENT_TYPES.get(last_ct, CONTENT_TYPES["3whs"])
+        await query.answer("🔁 កំពុងបង្កើតម្ដងទៀត...")
+        status_msg = await query.message.reply_text(
+            f"🔁 *កំពុងបង្កើត {ct['emoji']} {ct['name']} ម្តងទៀត (មុំថ្មី)...*\n"
+            f"_ប្រធានបទ: {last_topic}_\n"
+            f"_រយៈពេល: {duration}_"
+        )
+        new_response = await ai_service.generate_content_by_type(
+            content_type=last_ct,
+            topic=last_topic,
+            niche=last_topic,
+            duration=duration,
+        )
+        context.user_data["last_script"] = new_response
+        await safe_edit(status_msg, new_response)
+        await query.message.reply_text(
+            f"✅ *{ct['emoji']} {ct['name']} (កំណែថ្មី) រួចរាល់!*",
+            parse_mode="Markdown",
+            reply_markup=get_done_keyboard()
+        )
+
 # ─────────────────────────────────────────────
 # Message Handler (State Machine)
 # ─────────────────────────────────────────────
@@ -529,8 +599,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         duration = get_user_duration(update.effective_chat.id)
         ct = CONTENT_TYPES.get(content_type, CONTENT_TYPES["3whs"])
 
-        # Clear state immediately
-        context.user_data.clear()
+        # Clear state
+        context.user_data["state"] = None
 
         # Show generating status
         status_msg = await update.message.reply_text(
@@ -549,10 +619,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await safe_edit(status_msg, response)
 
+        # Store for refinement buttons
+        context.user_data["last_script"] = response
+        context.user_data["last_topic"] = user_text
+        context.user_data["last_content_type"] = content_type
+        context.user_data["last_duration"] = duration
+
         # Show quick action buttons after done
         await update.message.reply_text(
             f"✅ *{ct['emoji']} {ct['name']} រួចរាល់!*\n"
-            "តើអ្នកចង់បង្កើត Content អ្វីបន្តទៀត?",
+            "តើអ្នកចង់កែសម្រួល ឬផលិត Content អ្វីបន្តទៀត?",
             parse_mode="Markdown",
             reply_markup=get_done_keyboard()
         )

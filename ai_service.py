@@ -9,6 +9,8 @@ from prompts import (
     get_before_after_prompt,
     get_hot_take_prompt,
     get_top_list_prompt,
+    get_refine_hook_prompt,
+    get_refine_shorten_prompt,
     get_daily_ideas_prompt,
     get_chat_prompt,
 )
@@ -164,6 +166,16 @@ class AIService:
     async def generate_daily_ideas(self, category: str = "General") -> str:
         """Daily content ideas"""
         prompt = get_daily_ideas_prompt(category)
+        return await self.generate_response(prompt)
+
+    async def refine_hook(self, last_script: str) -> str:
+        """Generate 3 alternative hooks for the script"""
+        prompt = get_refine_hook_prompt(last_script)
+        return await self.generate_response(prompt)
+
+    async def refine_shorten(self, last_script: str) -> str:
+        """Make the script punchier and shorter"""
+        prompt = get_refine_shorten_prompt(last_script)
         return await self.generate_response(prompt)
 
     async def chat(self, user_message: str) -> str:

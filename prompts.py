@@ -1,6 +1,7 @@
 """
 Prompts and templates for 3WHs Video Content Creator Bot
 Includes: 3WHs Hook, POV Story, Myth vs Reality, Before/After, Hot Take, Top List
+Refinements: Change Hook, Shorten, Regenerate
 """
 
 SYSTEM_INSTRUCTION = """
@@ -21,22 +22,28 @@ SYSTEM_INSTRUCTION = """
 សូមសរសេរជាភាសាខ្មែរធម្មជាតិ រស់រវើក ដូចមនុស្សកំពុងនិយាយមុខកាមេរ៉ា (Natural Speaking Tone)។
 """
 
-# ─────────────────────────────────────────────────────────────────
-# CONTENT TYPE: 1 — 3WHs Hook Script (Original)
-# ─────────────────────────────────────────────────────────────────
-def get_script_generation_prompt(topic: str, duration: str = "60s") -> str:
-    if "30" in duration or "45" in duration or "60" in duration or "1m" in duration or "ខ្លី" in duration:
-        duration_desc = "វីដេអូខ្លីរហ័ស (30s - 60s) | ~១២០-១៦០ ពាក្យ | ផ្តោតលើ Hook ទាក់ចិត្ត + គន្លឹះខ្លីៗ"
-    elif "2" in duration or "3" in duration or "មធ្យម" in duration:
-        duration_desc = "វីដេអូមធ្យម (2-3 នាទី) | ~៣៥០-៥០០ ពាក្យ | ពន្យល់លម្អិត + ជំហានជាក់ស្ដែង"
-    elif "5" in duration or "10" in duration or "វែង" in duration or "youtube" in duration.lower():
-        duration_desc = "វីដេអូវែង (5-10 នាទី) | ~៨០០-១២០០ ពាក្យ | Chapters + Storytelling + Case Study"
+def get_duration_instruction(duration: str) -> str:
+    """Calculates realistic Khmer speech word counts based on speaking pace (~130-150 words/min)."""
+    dur_lower = str(duration).lower()
+    if "30" in dur_lower or "45" in dur_lower or "60" in dur_lower or ("1" in dur_lower and "នាទី" not in dur_lower) or "ខ្លី" in dur_lower:
+        return "⏱️ រយៈពេលកំណត់៖ ៦០ វិនាទី (Shorts / Reels / TikTok)\n📏 កម្រិតពាក្យ៖ សរសេរប្រហែល ~១៣០ ទៅ ១៥០ ពាក្យ (កុំសរសេរវែងហួស ព្រោះអ្នកនិយាយមុខកាមេរ៉ានិយាយបានត្រឹមតែ ១៣០-១៥០ ពាក្យក្នុង ១ នាទីប៉ុណ្ណោះ)។"
+    elif "2" in dur_lower:
+        return "⏱️ រយៈពេលកំណត់៖ ២ នាទី\n📏 កម្រិតពាក្យ៖ សរសេរប្រហែល ~២៦០ ទៅ ៣០០ ពាក្យ (ពន្យល់លម្អិតល្មម មានជំហានច្បាស់លាស់ ត្រូវតាមពេលវេលា ២ នាទី)។"
+    elif "3" in dur_lower:
+        return "⏱️ រយៈពេលកំណត់៖ ៣ នាទី\n📏 កម្រិតពាក្យ៖ សរសេរប្រហែល ~៤០០ ទៅ ៤៥០ ពាក្យ (ពន្យល់ស៊ីជម្រៅ មានឧទាហរណ៍ជាក់ស្តែង ត្រូវតាមពេលវេលា ៣ នាទី)។"
+    elif "5" in dur_lower:
+        return "⏱️ រយៈពេលកំណត់៖ ៥ នាទី\n📏 កម្រិតពាក្យ៖ សរសេរប្រហែល ~៦៥០ ទៅ ៧៥០ ពាក្យ (វីដេអូវែង មាន Chapters, Storytelling និង Case Study លម្អិត)។"
     else:
-        duration_desc = f"ប្រវែងកំណត់ជាក់លាក់៖ {duration}"
+        return f"⏱️ រយៈពេលកំណត់៖ {duration}\n📏 កម្រិតពាក្យ៖ សូមគ្រប់គ្រងចំនួនពាក្យឱ្យសមស្របនឹងល្បឿននិយាយប្រហែល ១៣០-១៥០ ពាក្យក្នុងមួយនាទី។"
 
+# ─────────────────────────────────────────────────────────────────
+# CONTENT TYPE: 1 — 3WHs Hook Script
+# ─────────────────────────────────────────────────────────────────
+def get_script_generation_prompt(topic: str, duration: str = "60 វិនាទី") -> str:
+    dur_info = get_duration_instruction(duration)
     return f"""
-សូមបង្កើត Script វីដេអូពេញលេញតាមរូបមន្ត 3WHs សម្រាប់ប្រធានបទ៖ "{topic}"
-⏱️ ប្រវែងវីដេអូ៖ {duration_desc}
+សូមបង្កើត Script វីដេអូពេញលេញតាមរូបមន្ត 3WHs សម្រាប់ប្រធានបទ ឬវិស័យ៖ "{topic}"
+{dur_info}
 
 ━━━━━━━━━━━━━━━━━━━━━
 🎬 **ចំណងជើងវីដេអូ (Video Title)**
@@ -44,27 +51,27 @@ def get_script_generation_prompt(topic: str, duration: str = "60s") -> str:
 ⏱️ **ប្រវែង**: {duration}
 ━━━━━━━━━━━━━━━━━━━━━
 
-🎯 **១. HOOK (៣ វិនាទីដំបូង)**
+🎯 **១. HOOK (៣ វិនាទីដំបូង - ចាប់អារម្មណ៍ភ្លាម)**
 🗣️ **ពាក្យ**: "[ពាក្យ Hook ខ្លាំង]"
-🎥 **កាយវិការ**: [Visual Cue / Action]
+🎥 **កាយវិការ**: [Visual Cue / Action មុខកាមេរ៉ា]
 
 📌 **២. WHAT (តើវាជាអ្វី?)**
 🗣️ **ពាក្យ**: "[ការពន្យល់ខ្លីខ្លឹម]"
 
 🔥 **៣. WHY (ហេតុអ្វីបានជាសំខាន់?)**
-🗣️ **ពាក្យ**: "[ផលចំណេញ ឬផលប៉ះពាល់]"
+🗣️ **ពាក្យ**: "[ផលចំណេញ ឬផលប៉ះពាល់ បើដឹងចំណេញអ្វី បើមិនដឹងខាតអ្វី]"
 
-👥 **៤. WHO (Target Audience)**
-🗣️ **ពាក្យ**: "[Target ឱ្យចំ]"
+👥 **៤. WHO (អ្នកណាខ្លះត្រូវដឹង?)**
+🗣️ **ពាក្យ**: "[Target Audience ឱ្យចំ]"
 
-🛠️ **៥. HOW (ជំហានអនុវត្ត)**
+🛠️ **៥. HOW (ជំហានអនុវត្តជាក់ស្តែង)**
 🗣️ **ពាក្យ**:
 • **ជំហានទី ១**: ...
 • **ជំហានទី ២**: ...
 • **ជំហានទី ៣**: ...
 
-📣 **៦. CALL TO ACTION**
-🗣️ **ពាក្យ**: "[CTA បិទចប់]"
+📣 **៦. CALL TO ACTION (CTA បិទបញ្ចប់)**
+🗣️ **ពាក្យ**: "[CTA បិទចប់ ជំរុញឱ្យ Comment/Follow/Save]"
 
 ━━━━━━━━━━━━━━━━━━━━━
 📝 **Caption Social Media**
@@ -74,7 +81,7 @@ def get_script_generation_prompt(topic: str, duration: str = "60s") -> str:
 #... #... #...
 
 🖼️ **Thumbnail / Cover Idea**
-[ការណែនាំ Visual + អក្សរធំ]
+[ការណែនាំ Visual + អក្សរធំលើគម្រប]
 ━━━━━━━━━━━━━━━━━━━━━
 """
 
@@ -82,15 +89,16 @@ def get_script_generation_prompt(topic: str, duration: str = "60s") -> str:
 # CONTENT TYPE: 2 — POV / Storytelling
 # ─────────────────────────────────────────────────────────────────
 def get_pov_story_prompt(situation: str, niche: str, duration: str = "60 វិនាទី") -> str:
+    dur_info = get_duration_instruction(duration)
     return f"""
 សូមបង្កើត Script វីដេអូ POV / Storytelling Format ដ៏ Viral និងទាក់ទាញ!
 
 📂 វិស័យ: {niche}
 🎭 POV / ស្ថានភាព: "{situation}"
-⏱️ រយៈពេល: {duration}
+{dur_info}
 
 Format POV ដែល Viral ខ្លាំង (Watch Time ខ្ពស់):
-- ចាប់ផ្ដើមជាមួយ "POV: ..." ឬ "ពេលដែរ..." ឬ "ថ្ងៃដែរខ្ញុំ..."
+- ចាប់ផ្ដើមជាមួយ "POV: ..." ឬ "ពេលដែល..." ឬ "ថ្ងៃដែលខ្ញុំ..."
 - ប្រើទស្សនៈ First Person (ខ្ញុំ, យើង)
 - បង្ហាញ Emotion ពិត: ភ្ញាក់ផ្អើល, ភ័យ, ស្រឡាញ់, ស្ទើរចាញ់...
 - បញ្ចប់ជាមួយ Twist ឬ Lesson ដែល Relatable
@@ -100,126 +108,118 @@ Format POV ដែល Viral ខ្លាំង (Watch Time ខ្ពស់):
 ━━━━━━━━━━━━━━━━━━━━━
 
 🎯 **HOOK (Opening — ចាប់ Scroll ភ្លាម)**
-🗣️ "[ពាក្យ POV ចាប់ Emotion ភ្លាម]"
+🗣️ "[ពាក្យ POV ចាប់ Emotion ភ្លាមក្នុង ៣ វិនាទី]"
 🎥 **Visual**: [ការណែនាំ Setting / Facial Expression]
 
-📖 **STORY BODY (ខ្លឹមសារ Story)**
-🗣️ "[Story ចូលដើម — ស្ថានភាព]"
-🗣️ "[ការរីកចម្រើន — Problem / Conflict]"
-🗣️ "[ថ្ងៃ / ពេលវេលា Turning Point]"
+📖 **STORY BODY (ខ្លឹមសារ Story តាមពេលវេលា {duration})**
+🗣️ "[Story ចូលដើម — ស្ថានភាពជាក់ស្ដែង]"
+🗣️ "[ការវិវឌ្ឍ — Problem / Conflict]"
+🗣️ "[Turning Point — ចំណុចរបត់នៃការផ្លាស់ប្តូរ]"
 
-💡 **LESSON / TWIST (Relatable Ending)**
-🗣️ "[ការបញ្ចប់ប្រទាក់ចិត្ត / ដែលគ្រប់គ្នា Feel ដូចគ្នា]"
+💡 **THE LESSON / TWIST (មេរៀន ឬចំណុចភ្ញាក់ផ្អើល)**
+🗣️ "[មេរៀនដែលទទួលបាន ឬ Twist ដែលធ្វើឱ្យអ្នកមើលយល់ស្រប]"
 
-📣 **CTA**
-🗣️ "[ពាក្យ CTA ជំរុញ Comment / Share]"
+📣 **CTA (ភ្ជាប់ជាមួយ Audience)**
+🗣️ "[«តើអ្នកធ្លាប់ជួបស្ថានភាពបែបនេះទេ? Comment ប្រាប់ខ្ញុំផង»]"
 
 ━━━━━━━━━━━━━━━━━━━━━
 📝 **Caption**
-[Caption Storytelling ដែល Relatable]
+[Caption បែប Story + Emoji]
 
 🏷️ **Hashtags**
-#POV #Story #... #...
-
-🖼️ **Thumbnail Idea**
-[Facial Expression / Reaction Shot ដែល Curious]
+#POV #StoryTime #RealTalk #...
 ━━━━━━━━━━━━━━━━━━━━━
 """
 
 # ─────────────────────────────────────────────────────────────────
 # CONTENT TYPE: 3 — Myth vs Reality
 # ─────────────────────────────────────────────────────────────────
-def get_myth_reality_prompt(myth: str, niche: str, duration: str = "60 វិនាទី") -> str:
+def get_myth_reality_prompt(misconception: str, niche: str, duration: str = "60 វិនាទី") -> str:
+    dur_info = get_duration_instruction(duration)
     return f"""
-សូមបង្កើត Script វីដេអូ "Myth vs Reality / ការបំបែកការយល់ច្រឡំ" ដ៏ Viral!
+សូមបង្កើត Script វីដេអូ Myth vs Reality Format ដែលបំបែកការយល់ច្រឡំ និងជំរុញឱ្យមានការ Comment Debate ខ្លាំង!
 
 📂 វិស័យ: {niche}
-⚡ Myth / ការយល់ច្រឡំ: "{myth}"
-⏱️ រយៈពេល: {duration}
+⚡ ការយល់ច្រឡំ (Myth): "{misconception}"
+{dur_info}
 
-ហេតុអ្វីបាន Viral: Hook ភ្ញាក់ → Comment Debate → Share ថ្លែងមតិ → Algorithm Boost
-
-━━━━━━━━━━━━━━━━━━━━━
-⚡ **Myth vs Reality: {myth}**
-━━━━━━━━━━━━━━━━━━━━━
-
-🎯 **HOOK (ចាប់ Attention ភ្លាម)**
-🗣️ "[ពាក្យចាប់ Attention — «អ្នកខ្លះគិតថា... ប៉ុន្តែ...» ឬ «Stop! ការយល់ច្រឡំទី ១ ដែរ...»]"
-🎥 **Visual**: [Reaction / Text on Screen]
-
-❌ **MYTH (ការយល់ច្រឡំ — អ្វីដែរមនុស្សជឿ)**
-🗣️ "មនុស្សច្រើនគិតថា [Myth ច្បាស់ + ហេតុផលពួកគេជឿ]..."
-🎥 **Visual**: [❌ អក្សរ MYTH / Wrong Icon]
-
-✅ **REALITY (ការពិត — ដ៏ Surprising)**
-🗣️ "ការពិតគឺ... [Reality ជាក់ស្ដែង + ភ័ស្ដុតាង / ឧទាហរណ៍]"
-🎥 **Visual**: [✅ អក្សរ REALITY / Facts]
-
-💡 **WHY IT MATTERS**
-🗣️ "[ហេតុអ្វីការដឹងការពិតនេះ ជួយ / ផ្លាស់ប្ដូរជីវិត / ការធ្វើ]"
-
-📣 **CTA — Debate Trigger**
-🗣️ "[ពាក្យ CTA ដែលជំរុញ Comment: «Comment ប្រាប់ខ្ញុំ...» ឬ «Share ទៅបង្ហាញ...»]"
+Format Myth vs Reality:
+- បើកដោយ Call-out: "ឈប់ជឿថា...!" ឬ "៩០% នៃមនុស្សយល់ខុសថា..."
+- បង្ហាញ MYTH: អ្វីដែលគេគិតខុស
+- បង្ហាញ REALITY: ការពិតជាក់ស្តែងបែបណា
+- WHY: ហេតុអ្វីបានជាគេយល់ខុសបែបហ្នឹង
+- PROOF/TIP: ភស្តុតាង ឬវិធីត្រឹមត្រូវ 1-2-3
 
 ━━━━━━━━━━━━━━━━━━━━━
-📝 **Caption (ទាក់ Comment)**
-[Caption ដែល Provocative + ជំរុញ Debate]
+⚡ **Myth vs Reality: {misconception}**
+━━━━━━━━━━━━━━━━━━━━━
+
+🎯 **HOOK (Stop Scroll Call-out)**
+🗣️ "[ពាក្យភ្ញាក់ផ្អើល ជំទាស់នឹងការយល់ឃើញទូទៅ]"
+🎥 **Visual**: [កាយវិការគ្រវីដៃ / No / ភ្ញាក់ផ្អើល]
+
+❌ **THE MYTH (ការយល់ខុស)**
+🗣️ "[ពន្យល់ពីអ្វីដែលមនុស្សទូទៅតែងតែគិតខុស]"
+
+✅ **THE REALITY (ការពិតជាក់ស្ដែង)**
+🗣️ "[ទម្លាយការពិត និងហេតុផលវិទ្យាសាស្ត្រ ឬបទពិសោធន៍ជាក់ស្តែង]"
+
+🛠️ **WHAT TO DO INSTEAD (វិធីត្រឹមត្រូវ)**
+🗣️ "[ជំហានអនុវត្តត្រឹមត្រូវ ១-២-៣]"
+
+📣 **CTA — Start Debate (ជំរុញឱ្យ Comment)**
+🗣️ "[«តើអ្នកធ្លាប់ជឿបែបហ្នឹងទេ? Comment យោបល់របស់អ្នកមក!»]"
+
+━━━━━━━━━━━━━━━━━━━━━
+📝 **Caption**
+[Caption បង្កាត់ភ្លើង Debate + «ការពិតគឺ...»]
 
 🏷️ **Hashtags**
-#MythVsFact #... #...
-
-🖼️ **Thumbnail Idea**
-[❌ vs ✅ Side by Side / Shocked Face + Text «ការយល់ច្រឡំ!»]
+#MythVsReality #FactCheck #...
 ━━━━━━━━━━━━━━━━━━━━━
 """
 
 # ─────────────────────────────────────────────────────────────────
-# CONTENT TYPE: 4 — Before & After / Transformation
+# CONTENT TYPE: 4 — Before & After
 # ─────────────────────────────────────────────────────────────────
 def get_before_after_prompt(transformation: str, niche: str, duration: str = "60 វិនាទី") -> str:
+    dur_info = get_duration_instruction(duration)
     return f"""
-សូមបង្កើត Script វីដេអូ "Before & After / Transformation" ដ៏ Visual និង Viral!
+សូមបង្កើត Script វីដេអូ Before & After / Transformation Format ដែលទាក់ទាញ Save និង Share ខ្ពស់បំផុត!
 
 📂 វិស័យ: {niche}
-🔄 Transformation: "{transformation}"
-⏱️ រយៈពេល: {duration}
-
-ហេតុអ្វីបាន Viral: Save Video ច្រើន (Reference) + Share ទៅបង្ហាញ + Dopamine Hit
+🔄 ការផ្លាស់ប្ដូរ: "{transformation}"
+{dur_info}
 
 ━━━━━━━━━━━━━━━━━━━━━
-🔄 **Before & After: {transformation}**
+🔄 **Transformation Script: {transformation}**
 ━━━━━━━━━━━━━━━━━━━━━
 
-🎯 **HOOK — Tease The Result**
-🗣️ "[ចាប់ Attention ដោយ Tease លទ្ធផល: «មើលការផ្លាស់ប្ដូរ...» ឬ «XYZ ថ្ងៃ → នេះ!»]"
-🎥 **Visual**: [Flash Result / End Result Preview]
+🎯 **HOOK (Tease the Result First)**
+🗣️ "[បង្ហាញលទ្ធផលអស្ចារ្យមុន — «មើលលទ្ធផលនេះសិន!»]"
+🎥 **Visual**: [បង្ហាញ After / Result ដ៏ស្រស់ស្អាត 1 វិនាទី]
 
-😰 **BEFORE (ស្ថានភាពចាស់ — Pain Point)**
-🗣️ "[ពណ៌នាស្ថានភាពមុន — ជាក់ស្ដែង មានអារម្មណ៍]"
-🎥 **Visual**: [Before Shot / Struggle Moment]
+🌑 **THE BEFORE (ចំណុចចាប់ផ្ដើម / បញ្ហា)**
+🗣️ "[ស្ថានភាពលំបាកមុនពេលផ្លាស់ប្តូរ]"
 
-⚡ **THE TURNING POINT**
-🗣️ "[ក្រឡេកមើលចំណុចផ្លាស់ប្ដូរ — ហេតុអ្វី? / វិធីណា?]"
+⚡ **THE PIVOT (ចំណុចផ្លាស់ប្ដូរ / សកម្មភាពដែលបានធ្វើ)**
+🗣️ "[តើបានផ្លាស់ប្ដូរ ឬអនុវត្តវិធីអ្វីខ្លះ?]"
 
-✨ **AFTER (លទ្ធផល — WOW Moment)**
-🗣️ "[ពណ៌នាស្ថានភាពក្រោយ — លម្អិតជាក់ស្ដែង]"
-🎥 **Visual**: [After Shot / Before-After Split / Results Stats]
+🌟 **THE AFTER (លទ្ធផលសម្រេច)**
+🗣️ "[លទ្ធផលជាក់ស្ដែង និងអារម្មណ៍សប្បាយចិត្ត]"
 
-💡 **KEY LESSON / SECRET**
-🗣️ "[គន្លឹះ ១ ដែលជួយបាន Transformation នេះ]"
+🔑 **KEY TAKEAWAY (គន្លឹះសំខាន់សម្រាប់ទស្សនិកជន)**
+🗣️ "[«បើអ្នកចង់បានលទ្ធផលបែបនេះ ត្រូវចាប់ផ្ដើមពី...»]"
 
-📣 **CTA — Inspire Action**
-🗣️ "[CTA ជំរុញ: «អ្នកក៏ធ្វើបាន...» ឬ «Save វីដេអូនេះ...»]"
+📣 **CTA — Save & Share**
+🗣️ "[«Save វីដេអូនេះទុកជាការជំរុញទឹកចិត្ត!»]"
 
 ━━━━━━━━━━━━━━━━━━━━━
 📝 **Caption**
-[Transformation Story ខ្លី + ជំរុញ Save]
+[Caption Transformation + Emoji]
 
 🏷️ **Hashtags**
-#BeforeAfter #Transformation #Glow Up #...
-
-🖼️ **Thumbnail Idea**
-[Before / After Split Screen + Number (ឧ: «30 Days»)]
+#BeforeAndAfter #Transformation #Motivation #...
 ━━━━━━━━━━━━━━━━━━━━━
 """
 
@@ -227,44 +227,40 @@ def get_before_after_prompt(transformation: str, niche: str, duration: str = "60
 # CONTENT TYPE: 5 — Hot Take / Opinion
 # ─────────────────────────────────────────────────────────────────
 def get_hot_take_prompt(opinion: str, niche: str, duration: str = "60 វិនាទី") -> str:
+    dur_info = get_duration_instruction(duration)
     return f"""
-សូមបង្កើត Script វីដេអូ "Hot Take / Controversial Opinion" ដ៏ Debate-Worthy!
+សូមបង្កើត Script វីដេអូ Hot Take / Controversial Opinion Format ដែលទាក់ទាញ Comment និង Algorithm Boost ខ្លាំង!
 
 📂 វិស័យ: {niche}
-🌶️ Opinion / Hot Take: "{opinion}"
-⏱️ រយៈពេល: {duration}
-
-ហេតុអ្វីបាន Viral: Disagree → Comment ច្រើន → Debate → Algorithm Boost ដោយឥតគិតថ្លៃ
+🌶️ មតិ/Opinion: "{opinion}"
+{dur_info}
 
 ━━━━━━━━━━━━━━━━━━━━━
-🌶️ **Hot Take: {opinion}**
+🌶️ **Hot Take Script: {opinion}**
 ━━━━━━━━━━━━━━━━━━━━━
 
-🎯 **HOOK — Drop The Bomb**
-🗣️ "[ពាក្យ Controversial ដោយមិន Filter: «មតិខ្ញុំ...» ឬ «គ្រប់គ្នានឹង Disagree...» ឬ «Nobody Wants To Hear This But...»]"
-🎥 **Visual**: [Confident Expression / Point To Camera]
+🎯 **HOOK (Bold Controversial Statement)**
+🗣️ "[ប្រយោគក្តៅគគុក ប្លែកពីគេ — «ខ្ញុំដឹងថានិយាយទៅគេអាចខឹង តែ...»]"
+🎥 **Visual**: [កែវភ្នែកម៉ឺងម៉ាត់ និយាយចំកាមេរ៉ា]
 
-💭 **THE TAKE (មតិ + ហេតុផល ១)**
-🗣️ "[Hot Take ច្បាស់ + ហេតុផលទី ១ ជាក់ស្ដែង]"
+🔥 **THE TAKE (បញ្ជាក់មតិឱ្យច្បាស់)**
+🗣️ "[ពន្យល់ពីទស្សនៈប្លែកនោះដោយក្លាហាន]"
 
-💭 **BACKUP POINT (ហេតុផល ២)**
-🗣️ "[ហេតុផលទី ២ ដែលកាន់តែ Shocking / ភ្ញាក់ផ្អើល]"
+📊 **THE ARGUMENT (ហេតុផល និងភស្តុតាងគាំទ្រ)**
+🗣️ "[លើកយកហេតុផល និងការពិតមកបញ្ជាក់]"
 
-🤝 **FAIR COUNTER (ទទួលស្គាល់ Side ម្ខាង)**
-🗣️ "[ទទួលស្គាល់ Point ម្ខាង ប៉ុន្ដែ... «ខ្ញុំយល់ថា... ប៉ុន្ដែ...»]"
+🎯 **THE NUANCE (ការយោគយល់)**
+🗣️ "[ទទួលស្គាល់ថាមនុស្សផ្សេងអាចគិតផ្សេង តែចំណុចសំខាន់គឺ...]"
 
-📣 **CTA — Trigger Debate**
-🗣️ "[«Comment ប្រាប់ខ្ញុំ Agree ឬ Disagree?» ឬ «Share ទៅបង្ហាញមើល...»]"
+📣 **CTA — Debate Prompt**
+🗣️ "[«តើអ្នកយល់ស្រប ឬមិនយល់ស្រប? សរសេរ Comment ខាងក្រោម!»]"
 
 ━━━━━━━━━━━━━━━━━━━━━
-📝 **Caption (Debate Starter)**
-[Caption Controversial ដែលជំរុញ Comment]
+📝 **Caption**
+[Caption បែប Challenge + «អ្នកគិតយ៉ាងម៉េច?»]
 
 🏷️ **Hashtags**
-#HotTake #Opinion #Unpopular #...
-
-🖼️ **Thumbnail Idea**
-[Confident / Serious Face + Bold Text «មតិខ្ញុំ...» + 🔥]
+#HotTake #Opinion #Debate #...
 ━━━━━━━━━━━━━━━━━━━━━
 """
 
@@ -272,52 +268,86 @@ def get_hot_take_prompt(opinion: str, niche: str, duration: str = "60 វិន�
 # CONTENT TYPE: 6 — Top List / Ranking
 # ─────────────────────────────────────────────────────────────────
 def get_top_list_prompt(topic: str, niche: str, duration: str = "60 វិនាទី") -> str:
+    dur_info = get_duration_instruction(duration)
     return f"""
-សូមបង្កើត Script វីដេអូ "Top List / Ranking" ដ៏ Save-Worthy និង Share ច្រើន!
+សូមបង្កើត Script វីដេអូ Top List / Ranking Format ដែលងាយស្រួលមើល ងាយចាំ និងទាក់ទាញការ Save ខ្ពស់!
 
 📂 វិស័យ: {niche}
-📋 ប្រធានបទ List: "{topic}"
-⏱️ រយៈពេល: {duration}
-
-ហេតុអ្វីបាន Viral: Save ច្រើន (Reference) + Comment "Missing #X" + Share
+📋 ប្រធានបទ: "{topic}"
+{dur_info}
 
 ━━━━━━━━━━━━━━━━━━━━━
-📋 **Top List: {topic}**
+📋 **Top List Script: {topic}**
 ━━━━━━━━━━━━━━━━━━━━━
 
-🎯 **HOOK — Tease The List**
-🗣️ "[ចាប់ Attention: «Top X [Topic] ដែរ...» ឬ «X Mistakes ដែរអ្នក...» ឬ «X Things You Didn't Know...»]"
-🎥 **Visual**: [Counter / Number on Screen]
+🎯 **HOOK (Set the Stakes)**
+🗣️ "[«Top ... ដែលអ្នកត្រូវតែដឹង ប្រយ័ត្នខកខានលេខ ១!»]"
+🎥 **Visual**: [កាយវិការរាប់ម្រាមដៃ / ចង្អុល]
 
-📝 **THE LIST (Item by Item — ចាប់ពី End → ១)**
-*(ចាប់ពីចំណាត់ថ្នាក់ក្រោយ → ទៅ #1 ដើម្បី Watch Time ខ្ពស់)*
+🔢 **THE LIST (រាប់ពីចំណុចទាប ទៅចំណុចល្អបំផុត)**
+🗣️ "• **លេខ ៣ / ចំណុចទី ១**: [ខ្លី ខ្លឹម ងាយយល់]"
+🗣️ "• **លេខ ២ / ចំណុចទី ២**: [ចំណុចសំខាន់បន្ថែម]"
+🗣️ "• **លេខ ១ / ចំណុចល្អបំផុត**: [ចំណុច Surprise ឬសំខាន់បំផុត]"
 
-🔢 **[ចំណាត់ No. X]**: "[ឈ្មោះ Item] — [ហេតុអ្វី? ១ ឃ្លាខ្លី]"
-🔢 **[ចំណាត់ No. ...]**: "..."
-🔢 **🏆 [ចំណាត់ No. 1]**: "[Item ល្អបំផុត — ពន្យល់ច្បាស់]"
+🎁 **BONUS / TIP**
+🗣️ "[គន្លឹះបន្ថែមខ្លីមួយ]"
 
-💡 **BONUS TIP**
-🗣️ "[Bonus Item / Secret ដែរមិនបានរាប់ក្នុង List]"
-
-📣 **CTA — Start Debate**
-🗣️ "[«Comment ប្រាប់ #1 របស់អ្នក...» ឬ «Save វីដេអូនេះ ព្រោះ...»]"
+📣 **CTA — Save & Comment**
+🗣️ "[«Save ទុកមើលឡើងវិញ និង Comment ប្រាប់លេខ ១ របស់អ្នក!»]"
 
 ━━━━━━━━━━━━━━━━━━━━━
 📝 **Caption**
 [List Caption + «Save ដើម្បីចំណាំ!»]
 
 🏷️ **Hashtags**
-#Top5 #BestOf #Ranking #...
-
-🖼️ **Thumbnail Idea**
-[Number Bold «TOP 5» + Items Grid / Trophy 🏆]
+#TopList #Tips #Ranking #BestOf #...
 ━━━━━━━━━━━━━━━━━━━━━
 """
 
 # ─────────────────────────────────────────────────────────────────
-# CONTENT TYPE: Daily Ideas (Auto Generate)
+# REFINEMENT PROMPTS (Hook Alternative, Shorten, Regenerate)
 # ─────────────────────────────────────────────────────────────────
-def get_daily_ideas_prompt(category: str = "General / Self-improvement / Business / Tech") -> str:
+def get_refine_hook_prompt(last_script: str) -> str:
+    return f"""
+ផ្អែកលើ Script វីដេអូខាងក្រោមនេះ សូមបង្កើត Hook (ពាក្យបើកក្បាល ៣ វិនាទីដំបូង) ថ្មីចំនួន ៣ បែបផ្សេងគ្នា ដែលទាក់ទាញខ្លាំងបំផុត ដើម្បីឱ្យ Creator អាចជ្រើសរើសយកមួយណាដែលត្រូវចិត្តបំផុត៖
+
+📜 **Script បច្ចុប្បន្ន៖**
+{last_script[:1200]}
+
+━━━━━━━━━━━━━━━━━━━━━
+🎣 **ជម្រើស Hook ថ្មីទាំង ៣ បែប (៣ វិនាទីដំបូង):**
+━━━━━━━━━━━━━━━━━━━━━
+
+✨ **ជម្រើសទី ១ (Curiosity Hook — ជំរុញឱ្យចង់ដឹងចង់ឃើញ):**
+🗣️ **ពាក្យនិយាយ:** "[ពាក្យបង្កចម្ងល់ ដែលទស្សនិកជនមិនអាចអូសរំលងបាន]"
+🎥 **កាយវិការ/Visual:** [កាយវិការ ឬសំឡេង]
+
+⚠️ **ជម្រើសទី ២ (Warning / Negative Hook — ការព្រមាន ឬកំហុស):**
+🗣️ **ពាក្យនិយាយ:** "[ការដាស់តឿនកុំឱ្យខាតបង់ ឬកុំធ្វើកំហុស]"
+🎥 **កាយវិការ/Visual:** [កាយវិការហាម ឬភ្ញាក់ផ្អើល]
+
+🎯 **ជម្រើសទី ៣ (Direct Value Hook — ផ្ដល់ផលប្រយោជន៍ចំៗភ្លាមៗ):**
+🗣️ **ពាក្យនិយាយ:** "[សន្យាផ្ដល់ដំណោះស្រាយ ឬគន្លឹះជាក់ស្តែងភ្លាមៗ]"
+🎥 **កាយវិការ/Visual:** [កាយវិការជឿជាក់ ចង្អុលកាមេរ៉ា]
+━━━━━━━━━━━━━━━━━━━━━
+💡 *អ្នកអាចជ្រើសរើស Hook មួយណាដែលចូលចិត្ត យកទៅជំនួស Hook ចាស់បានភ្លាមៗ!*
+"""
+
+def get_refine_shorten_prompt(last_script: str) -> str:
+    return f"""
+សូមកែសម្រួល និងសង្ខេប Script ខាងក្រោមនេះ ឱ្យកាន់តែ "ខ្លី ខ្លឹម រហ័ស និង Punchy" ជាងមុន (Fast-paced Short Form Content)!
+- កាត់បន្ថយពាក្យសម្ដីដែលមិនចាំបាច់ (Cut the fluff)
+- រក្សាគន្លឹះស្នូល និងរូបមន្ត 3WHs ឱ្យនៅដដែល
+- ធ្វើឱ្យល្បឿននិយាយលឿន សមរម្យសម្រាប់ TikTok/Reels ដែលទស្សនិកជនចូលចិត្តមើលចប់លឿន
+
+📜 **Script ដើម៖**
+{last_script}
+"""
+
+# ─────────────────────────────────────────────────────────────────
+# CONTENT TYPE: Daily Ideas
+# ─────────────────────────────────────────────────────────────────
+def get_daily_ideas_prompt(category: str = "General / Self-improvement / Business / Food") -> str:
     return f"""
 សូមផ្ដល់ជូននូវគំនិតមាតិកាវីដេអូ 3WHs ចំនួន ៣ ប្រធានបទថ្មីៗ និងទាក់ទាញ (Trending & High Engagement) សម្រាប់ថ្ងៃនេះ ក្នុងវិស័យ៖ {category}
 
@@ -343,7 +373,7 @@ def get_daily_ideas_prompt(category: str = "General / Self-improvement / Busines
 • 🛠️ **How**: [គន្លឹះអនុវត្តសង្ខេប]
 • 📋 **Format ណែនាំ**: [3WHs / POV / Myth / List...]
 ━━━━━━━━━━━━━━━━━━━━━
-💡 *ជ្រើស Project → Content Type → ចុចប៊ូតុង ដើម្បីបង្កើត Script ពេញលេញ!*
+💡 *ចុច /start រួចជ្រើសរើស Content Type ដើម្បីផលិត Script ពេញលេញភ្លាមៗ!*
 """
 
 # ─────────────────────────────────────────────────────────────────
@@ -354,5 +384,5 @@ def get_chat_prompt(user_message: str) -> str:
 អ្នកប្រើប្រាស់បានផ្ញើសារ៖ "{user_message}"
 
 សូមឆ្លើយតបជាភាសាខ្មែរ ក្នុងនាមជា 3WHs Content Coach / Video Producer ជំនាញ
-ជួយផ្ដល់យោបល់ កែលម្អ ឬបង្កើតមាតិការ​ឱ្យ​គាត់​យ៉ាងល្អ​ (មិនលើកឡើងប្រទេសថៃ ឬម្ហូបថៃ​ជាដាច់ខាត)។
+ជួយផ្ដល់យោបល់ កែលម្អ ឬបង្កើតមាតិការឱ្យគាត់យ៉ាងល្អ (ដាច់ខាតមិនលើកឡើងប្រទេសថៃ ឬម្ហូបថៃជាដាច់ខាត)។
 """
