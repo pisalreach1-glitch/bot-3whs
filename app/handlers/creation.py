@@ -23,12 +23,14 @@ from app.keyboards import (
     get_cancel_processing_keyboard,
     get_draft_duration_keyboard,
     get_back_home_keyboard,
+    get_topic_or_ideas_keyboard,
 )
 from app.views import (
     render_topic_prompt,
     render_review,
     render_script_summary,
     render_failure,
+    render_topic_or_ideas,
 )
 from app.services.generation import execute_generation_request
 from app.handlers.commands import get_user_key
@@ -61,12 +63,15 @@ async def handle_format_callback(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     draft.format_id = decoded.action
-    draft.current_step = "topic"
+    if not draft.niche:
+        saved_niche = storage.get_user_niche(user_key)
+        draft.niche = saved_niche or "ទូទៅ"
+    draft.current_step = "topic_or_ideas"
     storage.save_draft(user_key, draft)
-    navigation.go_to(user_key, Screens.TOPIC_INPUT, draft_id=draft.id)
+    navigation.go_to(user_key, Screens.TOPIC_OR_IDEAS, draft_id=draft.id)
 
-    msg = render_topic_prompt(draft.format_id)
-    await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_back_home_keyboard())
+    msg = render_topic_or_ideas(draft.format_id, draft.niche)
+    await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_topic_or_ideas_keyboard(draft))
 
 async def handle_draft_duration_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles d:<draft_token>:<revision>:<seconds>"""

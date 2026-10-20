@@ -21,12 +21,23 @@ from app.callbacks import (
 from app.models import Draft, SavedScript, GenerationRequest
 
 FORMAT_DEFINITIONS = [
-    ("3whs", "🎬 ពន្យល់ និងណែនាំ — 3WHs"),
-    ("pov", "🎭 និទានរឿង — POV"),
-    ("myth", "⚡ ការយល់ខុស និងការពិត"),
-    ("transform", "🔄 មុន និងក្រោយ"),
-    ("hottake", "🌶️ បញ្ចេញមតិ"),
-    ("toplist", "📋 បញ្ជី និងចំណាត់ថ្នាក់"),
+    ("3whs", "🎬 3WHs Hook Script"),
+    ("pov", "🎭 POV / Storytelling"),
+    ("myth", "⚡️ Myth vs Reality"),
+    ("transform", "🔄 Before & After"),
+    ("hottake", "🌶 Hot Take / Opinion"),
+    ("toplist", "📋 Top List / Ranking"),
+    ("comedy", "😂 Comedy"),
+]
+
+NICHE_DEFINITIONS = [
+    ("food", "🍜 Food / Cooking"),
+    ("coffee", "☕️ Coffee / Beverages"),
+    ("sales", "🛍 Sales / Online Business"),
+    ("education", "📚 Education / Skills"),
+    ("tech", "📱 Technology / AI"),
+    ("selfdev", "🌱 Personal Development"),
+    ("custom", "✏️ Custom niche"),
 ]
 
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
@@ -55,9 +66,23 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_format_selection_keyboard(draft: Draft) -> InlineKeyboardMarkup:
-    """Format submenu showing all 6 content formats with Back and Home."""
+def get_niche_selection_keyboard() -> InlineKeyboardMarkup:
+    """Niche selection keyboard showing preset niches, custom niche, and Home."""
     keyboard = []
+    for niche_id, label in NICHE_DEFINITIONS:
+        keyboard.append([
+            InlineKeyboardButton(label, callback_data=encode_menu(f"niche:{niche_id}"))
+        ])
+    keyboard.append([
+        InlineKeyboardButton("🏠 Menu", callback_data=encode_nav("home")),
+    ])
+    return InlineKeyboardMarkup(keyboard)
+
+def get_format_selection_keyboard(draft: Draft) -> InlineKeyboardMarkup:
+    """Format submenu showing Change Niche, all 7 content formats, Back and Home."""
+    keyboard = [
+        [InlineKeyboardButton("✏️ ប្ដូរវិស័យ", callback_data=encode_menu("change_niche"))]
+    ]
     for fmt_id, label in FORMAT_DEFINITIONS:
         keyboard.append([
             InlineKeyboardButton(label, callback_data=encode_format(fmt_id, draft.id, draft.revision))
@@ -66,6 +91,18 @@ def get_format_selection_keyboard(draft: Draft) -> InlineKeyboardMarkup:
         InlineKeyboardButton("⬅️ ត្រឡប់ក្រោយ", callback_data=encode_nav("back")),
         InlineKeyboardButton("🏠 Menu", callback_data=encode_nav("home")),
     ])
+    return InlineKeyboardMarkup(keyboard)
+
+def get_topic_or_ideas_keyboard(draft: Draft) -> InlineKeyboardMarkup:
+    """Offers choice between typing custom topic or requesting AI ideas for chosen niche and format."""
+    keyboard = [
+        [InlineKeyboardButton("✏️ ខ្ញុំមានប្រធានបទ", callback_data=encode_menu(f"top_custom:{draft.id}"))],
+        [InlineKeyboardButton("💡 ស្នើគំនិតក្នុងវិស័យនេះ", callback_data=encode_menu(f"top_ideas:{draft.id}"))],
+        [
+            InlineKeyboardButton("⬅️ ត្រឡប់ក្រោយ", callback_data=encode_nav("back")),
+            InlineKeyboardButton("🏠 Menu", callback_data=encode_nav("home")),
+        ],
+    ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_review_keyboard(draft: Draft) -> InlineKeyboardMarkup:

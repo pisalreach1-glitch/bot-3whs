@@ -12,11 +12,44 @@ from script_models import ScriptPlan, Scene, format_timestamp
 FORMAT_NAMES = {
     "3whs": "🎬 3WHs Hook Script",
     "pov": "🎭 POV / Storytelling",
-    "myth": "⚡ Myth vs Reality",
+    "myth": "⚡️ Myth vs Reality",
     "transform": "🔄 Before & After",
-    "hottake": "🌶️ Hot Take / Opinion",
+    "hottake": "🌶 Hot Take / Opinion",
     "toplist": "📋 Top List / Ranking",
-    "comedy": "😂 Short Comedy Video",
+    "comedy": "😂 Comedy",
+}
+
+NICHE_EXAMPLES = {
+    "food": [
+        "«វិធីធ្វើសម្លកកូរឱ្យឆ្ងាញ់តាមបែបបុរាណ»",
+        "«តើការធ្វើម្ហូបឆ្ងាញ់ចាំបាច់ត្រូវដាក់ប៊ីចេងច្រើនមែនទេ?»",
+        "«កំហុស ៣ យ៉ាងដែលធ្វើឱ្យស្ងោរមាន់ចេញមកស្វិត»",
+    ],
+    "coffee": [
+        "«របៀបឆុងកាហ្វេ Cold Brew ខ្លួនឯងឱ្យឈ្ងុយឆ្ងាញ់»",
+        "«កំហុស ៣ យ៉ាងពេលឆុង Espresso»",
+        "«ភាពខុសគ្នារវាងគ្រាប់កាហ្វេ Arabica និង Robusta»",
+    ],
+    "sales": [
+        "«តិចនិក Live លក់ទំនិញដាច់ខ្លាំងសម្រាប់អ្នកទើបចាប់ផ្ដើម»",
+        "«ហេតុអ្វីអតិថិជនសួរតម្លៃហើយស្ងាត់បាត់»",
+        "«វិធីឆ្លើយតបពេលអតិថិជនត្អូញថាតម្លៃថ្លៃ»",
+    ],
+    "education": [
+        "«គន្លឹះរៀនភាសាអង់គ្លេសឆាប់ចេះនិយាយក្នុង ៣ ខែ»",
+        "«វិធីទន្ទេញមេរៀនឆាប់ចាំមិនងាយភ្លេច»",
+        "«ទម្លាប់រៀន ៣ យ៉ាងដែលសិស្សពូកែតែងតែអនុវត្ត»",
+    ],
+    "tech": [
+        "«វិធីប្រើ ChatGPT ជួយសរសេរ Caption ហ្វេសប៊ុក»",
+        "«មុខងារសម្ងាត់ ៥ លើទូរស័ព្ទដែលមនុស្សភាគច្រើនមិនដឹង»",
+        "«តើ AI នឹងមកដណ្តើមការងារមនុស្សមែនឬទេ?»",
+    ],
+    "selfdev": [
+        "«ទម្លាប់ពេលព្រឹក ៥ នាទីដែលផ្លាស់ប្តូរជីវិតអ្នក»",
+        "«វិធីឈប់ពន្យារពេល (Procrastination) ភ្លាមៗ»",
+        "«សៀវភៅ ៣ ក្បាលដែលជួយឱ្យអ្នកមានវិន័យលើខ្លួនឯង»",
+    ],
 }
 
 def render_welcome(current_duration: str) -> str:
@@ -31,36 +64,87 @@ def render_welcome(current_duration: str) -> str:
         "• ចុច **[💡 រកគំនិតមាតិកា]** ដើម្បីមើលព័ត៌មាន និងគំនិតថ្មីៗ"
     )
 
-def render_format_selection() -> str:
+def render_niche_selection() -> str:
     return (
-        "🎬 *ជ្រើសរើសទម្រង់មាតិកា (Format)*\n"
+        "🎯 *សូមជ្រើសរើសវិស័យមាតិការបស់អ្នក (Content Niche)*\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "សូមជ្រើសរើសទម្រង់វីដេអូដែលអ្នកចង់ផលិតខាងក្រោម៖"
+        "វិស័យមាតិកា (Niche) ជួយឱ្យ AI យល់ពីជំនាញ និងទស្សនិកជនរបស់អ្នក ដើម្បីផ្ដល់គំនិត និងបង្កើត Script បានចំគោលដៅបំផុត។\n\n"
+        "សូមជ្រើសរើសវិស័យមួយខាងក្រោម ឬជ្រើសយក **[✏️ Custom niche]** ដើម្បីវាយបញ្ចូលដោយខ្លួនឯង៖"
     )
 
-def render_topic_prompt(format_id: str) -> str:
-    fmt_name = FORMAT_NAMES.get(format_id, "Script")
+def render_format_selection(niche: Optional[str] = None) -> str:
+    niche_label = niche if niche else "ទូទៅ"
     return (
-        f"📝 *សូមបញ្ចូលប្រធានបទសម្រាប់ {fmt_name}*\n"
+        f"🎯 វិស័យបច្ចុប្បន្ន៖ {niche_label}\n\n"
+        "🎬 *ជ្រើសរើសទម្រង់មាតិកា (Content Format)*\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "សូមវាយប្រធានបទ គំនិត ឬវិស័យអាជីវកម្មរបស់អ្នករួចផ្ញើមកកាន់ Bot៖\n\n"
-        "_ឧទាហរណ៍៖_\n"
-        "• «វិធីរើសខោខូវប៊យឱ្យសមរាង»\n"
-        "• «គន្លឹះសន្សំប្រាក់សម្រាប់អ្នកធ្វើការ»\n"
-        "• «ហេតុអ្វីហាត់ប្រាណមិនស្រកទម្ងន់»\n"
-        "• «របៀបឆុងកាហ្វេ Cold Brew ខ្លួនឯង»\n\n"
+        "សូមជ្រើសរើសទម្រង់រៀបរាប់វីដេអូដែលអ្នកចង់ផលិតខាងក្រោម៖"
+    )
+
+def render_topic_or_ideas(format_id: str, niche: Optional[str] = None) -> str:
+    fmt_name = FORMAT_NAMES.get(format_id, format_id)
+    niche_label = niche if niche else "ទូទៅ"
+    return (
+        f"🎯 *វិស័យ:* `{niche_label}`\n"
+        f"🎬 *ទម្រង់:* `{fmt_name}`\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "តើអ្នកចង់បន្តបែបណា?\n\n"
+        "• ចុច **[✏️ ខ្ញុំមានប្រធានបទ]** ដើម្បីវាយបញ្ចូលប្រធានបទផ្ទាល់ខ្លួន\n"
+        "• ចុច **[💡 ស្នើគំនិតក្នុងវិស័យនេះ]** ដើម្បីឱ្យ AI រកគំនិតដែលស័ក្តិសមនឹងវិស័យ និងទម្រង់នេះ"
+    )
+
+def render_topic_prompt(format_id: str, niche: Optional[str] = None) -> str:
+    fmt_name = FORMAT_NAMES.get(format_id, "Script")
+    niche_str = (niche or "").lower()
+
+    if any(k in niche_str for k in ["food", "ម្ហូប", "cook"]):
+        ex_list = NICHE_EXAMPLES["food"]
+    elif any(k in niche_str for k in ["coffee", "កាហ្វេ", "beverage", "ភេសជ្ជៈ"]):
+        ex_list = NICHE_EXAMPLES["coffee"]
+    elif any(k in niche_str for k in ["sales", "business", "លក់", "អាជីវកម្ម"]):
+        ex_list = NICHE_EXAMPLES["sales"]
+    elif any(k in niche_str for k in ["education", "skills", "អប់រំ", "ជំនាញ", "រៀន"]):
+        ex_list = NICHE_EXAMPLES["education"]
+    elif any(k in niche_str for k in ["tech", "ai", "បច្ចេកវិទ្យា"]):
+        ex_list = NICHE_EXAMPLES["tech"]
+    elif any(k in niche_str for k in ["self", "personal", "អភិវឌ្ឍ"]):
+        ex_list = NICHE_EXAMPLES["selfdev"]
+    elif niche:
+        ex_list = [
+            f"«គន្លឹះសំខាន់ៗដែលអ្នកចាប់អារម្មណ៍ {niche} គួរដឹង»",
+            f"«កំហុសទូទៅក្នុងវិស័យ {niche} និងវិធីកែប្រែ»",
+            f"«វិធីចាប់ផ្ដើមក្នុងវិស័យ {niche} ឱ្យចំណេញពេល»",
+        ]
+    else:
+        ex_list = [
+            "«វិធីរើសខោខូវប៊យឱ្យសមរាង»",
+            "«គន្លឹះសន្សំប្រាក់សម្រាប់អ្នកធ្វើការ»",
+            "«ហេតុអ្វីហាត់ប្រាណមិនស្រកទម្ងន់»",
+        ]
+
+    ex_text = "\n".join(f"• {ex}" for ex in ex_list)
+    niche_header = f" ({niche})" if niche else ""
+
+    return (
+        f"📝 *សូមបញ្ចូលប្រធានបទសម្រាប់ {fmt_name}{niche_header}*\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "សូមវាយប្រធានបទ ឬចំណុចដែលអ្នកចង់និយាយរួចផ្ញើមកកាន់ Bot៖\n\n"
+        f"_ឧទាហរណ៍សមស្របនឹងវិស័យ៖_\n"
+        f"{ex_text}\n\n"
         "💡 _អ្នកអាចចុច ⬅️ ត្រឡប់ក្រោយ ឬ /cancel ដើម្បីបោះបង់!_"
     )
 
 def render_review(draft: Draft, pace: float) -> str:
     fmt_name = FORMAT_NAMES.get(draft.format_id, draft.format_id)
     dur_label = f"{draft.duration_seconds} វិនាទី" if draft.duration_seconds < 60 else f"{draft.duration_seconds // 60} នាទី ({draft.duration_seconds} វិនាទី)"
+    niche_label = draft.niche if draft.niche else "ទូទៅ"
 
     lines = [
         "📋 *ផ្ទៀងផ្ទាត់ព័ត៌មានសំណើ (Draft Review)*",
         "━━━━━━━━━━━━━━━━━━━━━",
-        f"• 🎬 **ទម្រង់មាតិកា**: {fmt_name}",
-        f"• 📝 **ប្រធានបទ**: {draft.topic}",
+        f"• 🎯 **វិស័យ (Niche)**: {niche_label}",
+        f"• 🎬 **ទម្រង់មាតិកា (Format)**: {fmt_name}",
+        f"• 📝 **ប្រធានបទ (Topic)**: {draft.topic}",
         f"• ⏱️ **រយៈពេលវីដេអូ**: `{dur_label}`",
         f"• 🎙️ **ល្បឿននិយាយគិតទុក**: `{pace:.1f} តួអក្សរ/វិនាទី`",
     ]

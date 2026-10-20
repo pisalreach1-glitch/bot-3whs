@@ -103,6 +103,7 @@ class Draft:
     evidence_ids: List[str] = field(default_factory=list)
     current_step: str = "format"
     owner: Optional[UserKey] = None
+    niche: Optional[str] = None
 
     def to_snapshot(self) -> dict:
         return self.to_dict()
@@ -120,6 +121,7 @@ class Draft:
             "evidence_ids": list(self.evidence_ids),
             "current_step": self.current_step,
             "owner": self.owner.key_str if self.owner else None,
+            "niche": self.niche,
         }
 
     @classmethod
@@ -138,6 +140,7 @@ class Draft:
             evidence_ids=list(d.get("evidence_ids", [])),
             current_step=str(d.get("current_step", "format")),
             owner=owner,
+            niche=d.get("niche"),
         )
 
 @dataclass

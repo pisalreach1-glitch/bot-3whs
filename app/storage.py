@@ -72,6 +72,7 @@ class Storage:
                     user_id INTEGER NOT NULL,
                     default_duration TEXT NOT NULL,
                     pace REAL NOT NULL,
+                    niche TEXT,
                     updated_at TEXT NOT NULL,
                     PRIMARY KEY (chat_id, user_id)
                 )
@@ -90,9 +91,20 @@ class Storage:
                     actor_count INTEGER,
                     evidence_ids_json TEXT NOT NULL,
                     current_step TEXT NOT NULL,
+                    niche TEXT,
                     updated_at TEXT NOT NULL
                 )
             """)
+            # Check PRAGMA for existing databases needing column additions
+            cursor.execute("PRAGMA table_info(user_settings)")
+            us_cols = [row["name"] for row in cursor.fetchall()]
+            if "niche" not in us_cols:
+                cursor.execute("ALTER TABLE user_settings ADD COLUMN niche TEXT")
+
+            cursor.execute("PRAGMA table_info(drafts)")
+            d_cols = [row["name"] for row in cursor.fetchall()]
+            if "niche" not in d_cols:
+                cursor.execute("ALTER TABLE drafts ADD COLUMN niche TEXT")
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS generation_requests (
                     id TEXT PRIMARY KEY,
@@ -241,7 +253,7 @@ class Storage:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT default_duration, pace FROM user_settings
+                SELECT default_duration, pace, niche FROM user_settings
                 WHERE chat_id = ? AND user_id = ?
             """, (user_key.chat_id, user_key.user_id))
             row = cursor.fetchone()
@@ -249,21 +261,60 @@ class Storage:
                 return {
                     "duration": row["default_duration"],
                     "pace": float(row["pace"]),
+                    "niche": row["niche"] if ("niche" in row.keys() and row["niche"]) else None,
                 }
             return {
                 "duration": default_duration,
                 "pace": default_pace,
+                "niche": None,
             }
 
-    def save_settings(self, user_key: UserKey, duration: str, pace: float):
+    def save_settings(self, user_key: UserKey, duration: str, pace: float, niche: Optional[str] = None):
         now_iso = datetime.now(timezone.utc).isoformat()
         with self._get_connection() as conn:
             cursor = conn.cursor()
+            if niche is None:
+                cursor.execute("SELECT niche FROM user_settings WHERE chat_id = ? AND user_id = ?", (user_key.chat_id, user_key.user_id))
+                r = cursor.fetchone()
+                if r and "niche" in r.keys():
+                    niche = r["niche"]
             cursor.execute("""
                 INSERT OR REPLACE INTO user_settings
-                (chat_id, user_id, default_duration, pace, updated_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (user_key.chat_id, user_key.user_id, duration, float(pace), now_iso))
+                (chat_id, user_id, default_duration, pace, niche, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (user_key.chat_id, user_key.user_id, duration, float(pace), niche, now_iso))
+            conn.commit()
+
+    def get_user_niche(self, user_key: UserKey) -> Optional[str]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT niche FROM user_settings WHERE chat_id = ? AND user_id = ?", (user_key.chat_id, user_key.user_id))
+            row = cursor.fetchone()
+            if row and "niche" in row.keys() and row["niche"]:
+                return str(row["niche"]).strip()
+            return None
+
+    def save_user_niche(self, user_key: UserKey, niche: str):
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT default_duration, pace FROM user_settings WHERE chat_id = ? AND user_id = ?", (user_key.chat_id, user_key.user_id))
+            row = cursor.fetchone()
+            dur = row["default_duration"] if row else "60 វិនាទី"
+            pace = float(row["pace"]) if row else 10.0
+            cursor.execute("""
+                INSERT OR REPLACE INTO user_settings
+                (chat_id, user_id, default_duration, pace, niche, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (user_key.chat_id, user_key.user_id, dur, pace, niche.strip(), now_iso))
+            conn.commit()
+
+    def clear_incompatible_drafts(self, user_key: UserKey):
+        """Invalidates pending drafts and idea batches for user when changing niche, preserving successful scripts."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM drafts WHERE chat_id = ? AND user_id = ?", (user_key.chat_id, user_key.user_id))
+            cursor.execute("DELETE FROM idea_batches WHERE chat_id = ? AND user_id = ?", (user_key.chat_id, user_key.user_id))
             conn.commit()
 
     # ─────────────────────────────────────────────
@@ -288,6 +339,7 @@ class Storage:
                 evidence_ids=json.loads(row["evidence_ids_json"]),
                 current_step=row["current_step"],
                 owner=UserKey(row["chat_id"], row["user_id"]),
+                niche=row["niche"] if ("niche" in row.keys() and row["niche"]) else None,
             )
 
     def save_draft(self, user_key: UserKey, draft: Draft):
@@ -297,13 +349,13 @@ class Storage:
             cursor.execute("""
                 INSERT OR REPLACE INTO drafts
                 (id, chat_id, user_id, revision, format_id, topic, duration_seconds,
-                 audience, comedy_style, actor_count, evidence_ids_json, current_step, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 audience, comedy_style, actor_count, evidence_ids_json, current_step, niche, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 draft.id, user_key.chat_id, user_key.user_id, draft.revision,
                 draft.format_id, draft.topic, draft.duration_seconds, draft.audience,
                 draft.comedy_style, draft.actor_count, json.dumps(draft.evidence_ids),
-                draft.current_step, now_iso
+                draft.current_step, draft.niche, now_iso
             ))
             conn.commit()
 

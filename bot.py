@@ -141,12 +141,51 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text(f"មិនទាន់ជោគជ័យ៖ {err}")
         return
 
+    # 0. State: Entering Custom Niche
+    if state.current_screen == Screens.NICHE_CUSTOM_INPUT:
+        custom_niche = user_text.strip()
+        if custom_niche:
+            storage.save_user_niche(user_key, custom_niche)
+            storage.clear_incompatible_drafts(user_key)
+
+            settings = storage.get_settings(user_key)
+            from script_models import parse_duration_seconds
+            dur_s = parse_duration_seconds(settings["duration"])
+
+            draft = Draft(
+                id=f"d_{uuid.uuid4().hex[:8]}",
+                revision=1,
+                format_id="3whs",
+                topic="",
+                duration_seconds=dur_s,
+                audience="",
+                current_step="format",
+                owner=user_key,
+                niche=custom_niche,
+            )
+            storage.save_draft(user_key, draft)
+            navigation.go_to(user_key, Screens.FORMAT_SELECTION, draft_id=draft.id)
+
+            from app.views import render_format_selection
+            from app.keyboards import get_format_selection_keyboard
+
+            notice = (
+                f"✅ *បានកំណត់វិស័យផ្ទាល់ខ្លួន៖* `{custom_niche}`\n"
+                "_(សេចក្ដីព្រាងចាស់ដែលមិនត្រូវគ្នាត្រូវបានជម្រះ ប៉ុន្តែ Script ជោគជ័យត្រូវបានរក្សាទុកដដែល)_\n\n"
+            )
+            msg = notice + render_format_selection(custom_niche)
+            keyboard = get_format_selection_keyboard(draft)
+            await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+            return
+
     # 1. State: Entering Topic for Draft
-    if state.current_screen == Screens.TOPIC_INPUT and state.draft_id:
+    elif state.current_screen == Screens.TOPIC_INPUT and state.draft_id:
         draft = storage.get_draft(state.draft_id)
         if draft:
             draft.topic = user_text.strip()
             draft.audience = user_text.strip()
+            if not draft.niche:
+                draft.niche = storage.get_user_niche(user_key) or "ទូទៅ"
             draft.revision += 1
             draft.current_step = "review"
             storage.save_draft(user_key, draft)

@@ -90,13 +90,17 @@ def get_shooting_plan_schema_prompt(target_seconds: int, duration_label: str) ->
 """
 
 # ─────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────
 # CONTENT TYPE: 1 — 3WHs Hook Script
 # ─────────────────────────────────────────────────────────────────
-def get_script_generation_prompt(topic: str, duration: str = "60 វិនាទី") -> str:
+def get_script_generation_prompt(topic: str, duration: str = "60 វិនាទី", niche: str = "ទូទៅ", audience: str = "") -> str:
     target_s = parse_duration_seconds(duration)
     schema_prompt = get_shooting_plan_schema_prompt(target_s, duration)
+    aud_line = f"\n👥 ទស្សនិកជនគោលដៅ: {audience}" if audience and audience != topic else ""
     return f"""
-សូមបង្កើត Script វីដេអូពេញលេញ និងផែនការថត (Timestamped Shooting Plan) តាមរូបមន្ត 3WHs (Hook, What, Why, Who, How, CTA) សម្រាប់ប្រធានបទ ឬវិស័យ៖ "{topic}"
+សូមបង្កើត Script វីដេអូពេញលេញ និងផែនការថត (Timestamped Shooting Plan) តាមរូបមន្ត 3WHs (Hook, What, Why, Who, How, CTA)។
+📂 វិស័យ: {niche}
+🎯 ប្រធានបទ: "{topic}"{aud_line}
 
 {schema_prompt}
 """
@@ -104,13 +108,14 @@ def get_script_generation_prompt(topic: str, duration: str = "60 វិនាទ
 # ─────────────────────────────────────────────────────────────────
 # CONTENT TYPE: 2 — POV / Storytelling
 # ─────────────────────────────────────────────────────────────────
-def get_pov_story_prompt(situation: str, niche: str, duration: str = "60 វិនាទី") -> str:
+def get_pov_story_prompt(situation: str, niche: str, duration: str = "60 វិនាទី", audience: str = "") -> str:
     target_s = parse_duration_seconds(duration)
     schema_prompt = get_shooting_plan_schema_prompt(target_s, duration)
+    aud_line = f"\n👥 ទស្សនិកជនគោលដៅ: {audience}" if audience and audience != situation else ""
     return f"""
 សូមបង្កើត Script វីដេអូ និងផែនការថត POV / Storytelling Format (Timestamped Shooting Plan)។
 📂 វិស័យ: {niche}
-🎭 POV / ស្ថានភាព: "{situation}"
+🎭 POV / ស្ថានភាព: "{situation}"{aud_line}
 
 ចំណុចពិសេស POV:
 - ចាប់ផ្ដើមជាមួយ "POV: ..." ឬ "ពេលដែល..." ឬ "ថ្ងៃដំបូងដែល..." ជាមួយអារម្មណ៍ពិត (Emotion)
@@ -123,13 +128,14 @@ def get_pov_story_prompt(situation: str, niche: str, duration: str = "60 វិ�
 # ─────────────────────────────────────────────────────────────────
 # CONTENT TYPE: 3 — Myth vs Reality
 # ─────────────────────────────────────────────────────────────────
-def get_myth_reality_prompt(myth: str, niche: str, duration: str = "60 វិនាទី") -> str:
+def get_myth_reality_prompt(myth: str, niche: str, duration: str = "60 វិនាទី", audience: str = "") -> str:
     target_s = parse_duration_seconds(duration)
     schema_prompt = get_shooting_plan_schema_prompt(target_s, duration)
+    aud_line = f"\n👥 ទស្សនិកជនគោលដៅ: {audience}" if audience and audience != myth else ""
     return f"""
 សូមបង្កើត Script វីដេអូ និងផែនការថត Myth vs Reality Format (Timestamped Shooting Plan)។
 📂 វិស័យ: {niche}
-⚡ ការយល់ច្រឡំ / Myth: "{myth}"
+⚡ ការយល់ច្រឡំ / Myth: "{myth}"{aud_line}
 
 ចំណុចពិសេស Myth vs Reality:
 - Hook បំបែកជំនឿខុសភ្លាមៗ ("ឈប់យល់ថា...", "ការពិតមិនមែនអញ្ចឹងទេ...")
@@ -143,13 +149,14 @@ def get_myth_reality_prompt(myth: str, niche: str, duration: str = "60 វិន
 # ─────────────────────────────────────────────────────────────────
 # CONTENT TYPE: 4 — Before & After / Transformation
 # ─────────────────────────────────────────────────────────────────
-def get_before_after_prompt(transformation: str, niche: str, duration: str = "60 វិនាទី") -> str:
+def get_before_after_prompt(transformation: str, niche: str, duration: str = "60 វិនាទី", audience: str = "") -> str:
     target_s = parse_duration_seconds(duration)
     schema_prompt = get_shooting_plan_schema_prompt(target_s, duration)
+    aud_line = f"\n👥 ទស្សនិកជនគោលដៅ: {audience}" if audience and audience != transformation else ""
     return f"""
 សូមបង្កើត Script វីដេអូ និងផែនការថត Before & After / Transformation Format (Timestamped Shooting Plan)។
 📂 វិស័យ: {niche}
-🔄 ការផ្លាស់ប្តូរ: "{transformation}"
+🔄 ការផ្លាស់ប្តូរ: "{transformation}"{aud_line}
 
 ចំណុចពិសេស Before & After:
 - បង្ហាញលទ្ធផល "After" ទាក់ទាញភ្លាមក្នុងប្លង់ទី ១ រួចសួរថា "តើធ្វើបែបណា?"
@@ -163,13 +170,14 @@ def get_before_after_prompt(transformation: str, niche: str, duration: str = "60
 # ─────────────────────────────────────────────────────────────────
 # CONTENT TYPE: 5 — Hot Take / Opinion
 # ─────────────────────────────────────────────────────────────────
-def get_hot_take_prompt(opinion: str, niche: str, duration: str = "60 វិនាទី") -> str:
+def get_hot_take_prompt(opinion: str, niche: str, duration: str = "60 វិនាទី", audience: str = "") -> str:
     target_s = parse_duration_seconds(duration)
     schema_prompt = get_shooting_plan_schema_prompt(target_s, duration)
+    aud_line = f"\n👥 ទស្សនិកជនគោលដៅ: {audience}" if audience and audience != opinion else ""
     return f"""
 សូមបង្កើត Script វីដេអូ និងផែនការថត Hot Take / Opinion Format (Timestamped Shooting Plan)។
 📂 វិស័យ: {niche}
-🌶️ មតិប្លែក / Hot Take: "{opinion}"
+🌶️ មតិប្លែក / Hot Take: "{opinion}"{aud_line}
 
 ចំណុចពិសេស Hot Take:
 - Hook បែបផ្ទុយពីទម្លាប់ ("មនុស្សភាគច្រើនគិតថា... តែខ្ញុំគិតថាខុស...")
@@ -182,13 +190,14 @@ def get_hot_take_prompt(opinion: str, niche: str, duration: str = "60 វិន�
 # ─────────────────────────────────────────────────────────────────
 # CONTENT TYPE: 6 — Top List / Ranking
 # ─────────────────────────────────────────────────────────────────
-def get_top_list_prompt(topic: str, niche: str, duration: str = "60 វិនាទី") -> str:
+def get_top_list_prompt(topic: str, niche: str, duration: str = "60 វិនាទី", audience: str = "") -> str:
     target_s = parse_duration_seconds(duration)
     schema_prompt = get_shooting_plan_schema_prompt(target_s, duration)
+    aud_line = f"\n👥 ទស្សនិកជនគោលដៅ: {audience}" if audience and audience != topic else ""
     return f"""
 សូមបង្កើត Script វីដេអូ និងផែនការថត Top List / Ranking Format (Timestamped Shooting Plan)។
 📂 វិស័យ: {niche}
-📋 ប្រធានបទ: "{topic}"
+📋 ប្រធានបទ: "{topic}"{aud_line}
 
 ចំណុចពិសេស Top List:
 - Hook បង្ហាញពីសារៈសំខាន់នៃបញ្ជី ("Top ... ដែលអ្នកមិនគួររំលង ជាពិសេសលេខ ១!")
@@ -244,7 +253,8 @@ def get_refine_shorten_prompt(last_script_text: str, duration: str = "60 វិ�
 # ─────────────────────────────────────────────────────────────────
 # CONTENT TYPE: News-Grounded Ideas (Fresh Evidence)
 # ─────────────────────────────────────────────────────────────────
-def get_news_grounded_ideas_prompt(sources_text: str, category: str = "ទូទៅ") -> str:
+def get_news_grounded_ideas_prompt(sources_text: str, category: str = "ទូទៅ", format_name: str = "") -> str:
+    fmt_guide = f"\nទម្រង់មាតិកាដែលត្រូវផលិត (Content Format)៖ {format_name}" if format_name else ""
     return f"""
 អ្នកគឺជា Creative Director និងជាអ្នកផលិតមាតិកា 3WHs Video អាជីព។
 ខាងក្រោមនេះគឺជាបញ្ជីព័ត៌មានថ្មីៗពិតប្រាកដដែលបានស្រង់ចេញពីប្រភពសារព័ត៌មានសាធារណៈ។
@@ -254,7 +264,7 @@ def get_news_grounded_ideas_prompt(sources_text: str, category: str = "ទូទ
 បញ្ជីព័ត៌មានថ្មីៗ៖
 {sources_text}
 
-វិស័យ/ប្រធានបទគោលដៅ៖ {category}
+វិស័យ/ប្រធានបទគោលដៅ៖ {category}{fmt_guide}
 
 សូមបង្កើតគំនិតមាតិកាវីដេអូចំនួន ៣ ដែលទាញចេញ ឬបំផុសគំនិតដោយផ្ទាល់ពីបញ្ជីព័ត៌មានខាងលើនេះ សម្រាប់ផលិតជាវីដេអូខ្លី (TikTok / Reels / Shorts)។
 (ដាច់ខាតមិនលើកឡើងប្រទេសថៃ ឬម្ហូបថៃជាដាច់ខាត)។
@@ -264,16 +274,17 @@ def get_news_grounded_ideas_prompt(sources_text: str, category: str = "ទូទ
 🔥 **គំនិតទី [លេខ]៖ [ចំណងជើងទាក់ទាញ]**
 • 🎯 **Hook**: [ពាក្យ Hook ទាក់ទាញក្នុង ៣ វិនាទីដំបូង]
 • 📌 **What**: [ខ្លឹមសារខ្លី]
-• 📋 **Format ណែនាំ**: [3WHs Hook Script / POV / Myth vs Reality / Before & After / Hot Take / Top List]
+• 📋 **Format ណែនាំ**: [{format_name or "3WHs Hook Script / POV / Myth vs Reality / Before & After / Hot Take / Top List"}]
 • 📌 **ប្រភពយោង**: [ដាក់លេខសម្គាល់ប្រភព ឧទាហរណ៍ [1] ឬ [2] ឬ [3] តែប៉ុណ្ណោះ ហាមប្រឌិតលេខផ្សេង ឬបង្កើត Link]
 """
 
 # ─────────────────────────────────────────────────────────────────
 # CONTENT TYPE: Honest Fallback (General AI Ideas)
 # ─────────────────────────────────────────────────────────────────
-def get_daily_ideas_prompt(category: str = "មាតិកាទូទៅ និងអាជីវកម្ម") -> str:
+def get_daily_ideas_prompt(category: str = "មាតិកាទូទៅ និងអាជីវកម្ម", format_name: str = "") -> str:
+    fmt_guide = f"\nទម្រង់មាតិកាដែលត្រូវផលិត (Content Format)៖ {format_name}" if format_name else ""
     return f"""
-សូមផ្ដល់ជូននូវគំនិតមាតិកាវីដេអូ 3WHs ចំនួន ៣ ប្រធានបទគំរូទូទៅពី AI សម្រាប់ជាជំនួយដល់ Creator ក្នុងវិស័យ៖ {category}
+សូមផ្ដល់ជូននូវគំនិតមាតិកាវីដេអូ 3WHs ចំនួន ៣ ប្រធានបទគំរូទូទៅពី AI សម្រាប់ជាជំនួយដល់ Creator ក្នុងវិស័យ៖ {category}{fmt_guide}
 (ដាច់ខាតមិនលើកឡើងប្រទេសថៃ ឬម្ហូបថៃជាដាច់ខាត)
 
 ━━━━━━━━━━━━━━━━━━━━━
@@ -285,19 +296,19 @@ def get_daily_ideas_prompt(category: str = "មាតិកាទូទៅ ន�
 • 🎯 **Hook**: [ពាក្យ Hook ចាប់អារម្មណ៍]
 • 📌 **What**: [ខ្លឹមសារខ្លី]
 • 🛠️ **How**: [គន្លឹះអនុវត្តសង្ខេប]
-• 📋 **Format ណែនាំ**: [3WHs / POV / Myth / List...]
+• 📋 **Format ណែនាំ**: [{format_name or "3WHs / POV / Myth / List..."}]
 
 🔥 **ប្រធានបទទី ២៖ [ចំណងជើង]**
 • 🎯 **Hook**: [ពាក្យ Hook ចាប់អារម្មណ៍]
 • 📌 **What**: [ខ្លឹមសារខ្លី]
 • 🛠️ **How**: [គន្លឹះអនុវត្តសង្ខេប]
-• 📋 **Format ណែនាំ**: [3WHs / POV / Myth / List...]
+• 📋 **Format ណែនាំ**: [{format_name or "3WHs / POV / Myth / List..."}]
 
 🔥 **ប្រធានបទទី ៣៖ [ចំណងជើង]**
 • 🎯 **Hook**: [ពាក្យ Hook ចាប់អារម្មណ៍]
 • 📌 **What**: [ខ្លឹមសារខ្លី]
 • 🛠️ **How**: [គន្លឹះអនុវត្តសង្ខេប]
-• 📋 **Format ណែនាំ**: [3WHs / POV / Myth / List...]
+• 📋 **Format ណែនាំ**: [{format_name or "3WHs / POV / Myth / List..."}]
 ━━━━━━━━━━━━━━━━━━━━━
 """
 
@@ -315,7 +326,7 @@ def get_chat_prompt(user_message: str) -> str:
 # ─────────────────────────────────────────────────────────────────
 # CONTENT TYPE: Short Comedy Video
 # ─────────────────────────────────────────────────────────────────
-def get_comedy_prompt(topic: str, style: str = "everyday", actor_count: int = 1, duration: str = "60 វិនាទី") -> str:
+def get_comedy_prompt(topic: str, style: str = "everyday", actor_count: int = 1, duration: str = "60 វិនាទី", niche: str = "ទូទៅ", audience: str = "") -> str:
     target_s = parse_duration_seconds(duration)
     schema_prompt = get_shooting_plan_schema_prompt(target_s, duration)
     style_desc = {
@@ -326,10 +337,12 @@ def get_comedy_prompt(topic: str, style: str = "everyday", actor_count: int = 1,
     }.get(style, style)
 
     actors_desc = f"{actor_count} នាក់ (ដើរតួជា ២ តួអង្គឆ្លាស់គ្នា)" if actor_count == 1 else f"{actor_count} នាក់ (សន្ទនាឆ្លើយឆ្លងគ្នា)"
+    aud_line = f"\n👥 ទស្សនិកជនគោលដៅ: {audience}" if audience and audience != topic else ""
 
     return f"""
 សូមបង្កើត Script វីដេអូកំប្លែងខ្លី (Short Comedy Video) ជាភាសាខ្មែរ សម្រាប់ផលិតជាវីដេអូខ្លី (TikTok / Reels / Shorts)។
-🎭 ប្រធានបទកំប្លែង: "{topic}"
+📂 វិស័យ (Niche): {niche}
+🎭 ប្រធានបទកំប្លែង: "{topic}"{aud_line}
 🎨 ស្ទីលកំប្លែង: {style_desc}
 👥 ចំនួនតួអង្គ: {actors_desc}
 

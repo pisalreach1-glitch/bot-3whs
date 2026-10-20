@@ -4,6 +4,7 @@ app/handlers/ideas.py - Daily Ideas Flow and Idea-to-Draft Selection.
 
 import uuid
 import logging
+from typing import Optional
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -18,12 +19,21 @@ from script_models import parse_duration_seconds
 
 logger = logging.getLogger(__name__)
 
-async def start_ideas_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str = "ទូទៅ"):
-    """Fetches or generates daily content ideas and presents numbered selection buttons."""
+async def start_ideas_flow(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    category: Optional[str] = None,
+    format_id: Optional[str] = None,
+    draft_id: Optional[str] = None,
+):
+    """Fetches or generates daily content ideas for niche and format, presenting selection buttons."""
     user_key = get_user_key(update)
     storage = context.bot_data["storage"]
     ai = context.bot_data["ai"]
     task_mgr = context.bot_data["task_mgr"]
+
+    if not category:
+        category = storage.get_user_niche(user_key) or "ទូទៅ"
 
     target = update.message or (update.callback_query.message if update.callback_query else None)
     status_msg = await target.reply_text("💡 *កំពុងស្វែងរកព័ត៌មានថ្មីៗ និងរៀបចំគំនិតមាតិកា...*", parse_mode="Markdown")
@@ -39,6 +49,7 @@ async def start_ideas_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, c
             category=category,
             storage=storage,
             ai=ai,
+            format_id=format_id,
         )
 
         if not task_mgr.is_current_request(user_key, token):
@@ -50,7 +61,7 @@ async def start_ideas_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, c
             await status_msg.edit_text(err_text, parse_mode="Markdown", reply_markup=get_back_home_keyboard())
             return
 
-        navigation.go_to(user_key, Screens.IDEA_RESULTS)
+        navigation.go_to(user_key, Screens.IDEA_RESULTS, draft_id=draft_id)
         ideas_text = render_ideas_batch(ideas, evidence, category)
         keyboard = get_ideas_keyboard(batch_token, len(ideas))
         await status_msg.edit_text(ideas_text, parse_mode="Markdown", reply_markup=keyboard)
@@ -61,7 +72,7 @@ async def start_ideas_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, c
 async def handle_idea_pick_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Handles i:<batch_token>:<idea_index>
-    Selecting an idea creates a draft, preserves evidence IDs, and opens Draft Review.
+    Selecting an idea preserves user's chosen format, sets topic, preserves evidence IDs, and opens Draft Review.
     """
     query = update.callback_query
     await query.answer()
@@ -89,19 +100,35 @@ async def handle_idea_pick_callback(update: Update, context: ContextTypes.DEFAUL
     chosen_idea = batch["ideas"][idea_idx - 1]
     settings = storage.get_settings(user_key)
     dur_s = parse_duration_seconds(settings["duration"])
+    saved_niche = storage.get_user_niche(user_key) or "ទូទៅ"
 
-    # Create new draft initialized with the selected idea
-    draft = Draft(
-        id=f"d_{uuid.uuid4().hex[:8]}",
-        revision=1,
-        format_id=chosen_idea.suggested_format or "3whs",
-        topic=chosen_idea.topic,
-        duration_seconds=dur_s,
-        audience=chosen_idea.topic,
-        evidence_ids=[str(s) for s in chosen_idea.source_ids],
-        current_step="review",
-        owner=user_key,
-    )
+    state = navigation.get_state(user_key)
+    draft = storage.get_draft(state.draft_id) if state.draft_id else None
+
+    if draft:
+        # Preserve user's selected format! Do not overwrite with chosen_idea.suggested_format!
+        draft.topic = chosen_idea.topic
+        draft.audience = chosen_idea.topic
+        draft.evidence_ids = [str(s) for s in chosen_idea.source_ids]
+        draft.current_step = "review"
+        if not draft.niche:
+            draft.niche = saved_niche
+        draft.revision += 1
+    else:
+        # Create new draft if none existed
+        draft = Draft(
+            id=f"d_{uuid.uuid4().hex[:8]}",
+            revision=1,
+            format_id=chosen_idea.suggested_format or "3whs",
+            topic=chosen_idea.topic,
+            duration_seconds=dur_s,
+            audience=chosen_idea.topic,
+            evidence_ids=[str(s) for s in chosen_idea.source_ids],
+            current_step="review",
+            owner=user_key,
+            niche=saved_niche,
+        )
+
     storage.save_draft(user_key, draft)
     navigation.go_to(user_key, Screens.DRAFT_REVIEW, draft_id=draft.id)
 

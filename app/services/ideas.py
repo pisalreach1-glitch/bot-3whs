@@ -85,21 +85,43 @@ async def get_or_generate_ideas(
     storage: Storage,
     ai: AIService,
     force_ai_only: bool = False,
+    format_id: Optional[str] = None,
 ) -> Tuple[Optional[str], List[Idea], List[EvidenceRecord], Optional[str]]:
     """
     Returns (batch_token, ideas_list, evidence_list, failure_message).
     On citation failure: returns (None, [], evidence_list, failure_message)
     without triggering a second Gemini call.
     Uses daily caching (Asia/Phnom_Penh) and asyncio locking to deduplicate identical requests.
+    Cache key: local date + niche + format + evidence mode.
     """
     cat_clean = category.strip() if category else "ទូទៅ"
     cat_lower = cat_clean.lower()
     local_date_str = datetime.now(pytz.timezone("Asia/Phnom_Penh")).strftime("%Y-%m-%d")
-    cache_key = f"{local_date_str}_{cat_lower}"
+    fmt_key = (format_id or "all").lower()
+
+    from app.views import FORMAT_NAMES
+    fmt_name = FORMAT_NAMES.get(format_id, "") if format_id else ""
+
+    # Unsupported niches (food, coffee, education, self-development) must never attach unrelated news
+    is_unsupported_niche = any(k in cat_lower for k in [
+        "food", "ម្ហូប", "cook",
+        "coffee", "កាហ្វេ", "beverage", "ភេសជ្ជៈ",
+        "education", "skills", "អប់រំ", "ជំនាញ",
+        "self", "personal", "អភិវឌ្ឍ",
+    ])
+    is_supported = (not is_unsupported_niche) and any(k in cat_lower for k in [
+        "tech", "ai", "បច្ចេកវិទ្យា",
+        "business", "sales", "លក់", "អាជីវកម្ម", "សេដ្ឋកិច្ច",
+        "general", "ទូទៅ", "cambodia", "កម្ពុជា",
+    ])
+    evidence_mode = "grounded" if (is_supported and not force_ai_only) else "ai_only"
+    cache_key = f"{local_date_str}_{cat_lower}_{fmt_key}_{evidence_mode}"
+    fallback_cache_key = f"{local_date_str}_{cat_lower}_{fmt_key}_ai_only"
 
     # 1. Fast cache check before acquiring lock
-    if not force_ai_only and cache_key in _DAILY_IDEAS_CACHE:
-        cached_ideas, cached_evidence = _DAILY_IDEAS_CACHE[cache_key]
+    cached_entry = _DAILY_IDEAS_CACHE.get(cache_key) or _DAILY_IDEAS_CACHE.get(fallback_cache_key)
+    if cached_entry:
+        cached_ideas, cached_evidence = cached_entry
         logger.info(f"Reusing cached daily ideas for '{cache_key}'")
         batch_token = f"b_{uuid.uuid4().hex[:8]}"
         storage.save_idea_batch(batch_token, user_key, cat_clean, cached_ideas, cached_evidence)
@@ -108,17 +130,17 @@ async def get_or_generate_ideas(
     # 2. Concurrency lock to prevent simultaneous duplicate requests
     async with _IDEAS_LOCK:
         # Double check after acquiring lock
-        if not force_ai_only and cache_key in _DAILY_IDEAS_CACHE:
-            cached_ideas, cached_evidence = _DAILY_IDEAS_CACHE[cache_key]
+        cached_entry = _DAILY_IDEAS_CACHE.get(cache_key) or _DAILY_IDEAS_CACHE.get(fallback_cache_key)
+        if cached_entry:
+            cached_ideas, cached_evidence = cached_entry
             logger.info(f"Reusing cached daily ideas after lock for '{cache_key}'")
             batch_token = f"b_{uuid.uuid4().hex[:8]}"
             storage.save_idea_batch(batch_token, user_key, cat_clean, cached_ideas, cached_evidence)
             return batch_token, cached_ideas, cached_evidence, None
 
-        is_supported = any(k in cat_lower for k in ["general", "ទូទៅ", "business", "លក់", "អាជីវកម្ម", "សេដ្ឋកិច្ច", "tech", "បច្ចេកវិទ្យា", "cambodia", "កម្ពុជា"])
         evidence_records: List[EvidenceRecord] = []
 
-        # Retrieve news evidence if supported and not forced AI-only
+        # Retrieve news evidence ONLY if supported and not forced AI-only
         if is_supported and not force_ai_only:
             try:
                 news_items = await get_fresh_news_sources(category=cat_clean, max_items=5)
@@ -144,7 +166,7 @@ async def get_or_generate_ideas(
                 sources_lines.append(f"[{ev.id}] ចំណងជើង: {ev.title} | សារព័ត៌មាន: {ev.publisher} ({pub_date})")
             sources_text = "\n".join(sources_lines)
 
-            prompt = get_news_grounded_ideas_prompt(sources_text, cat_clean)
+            prompt = get_news_grounded_ideas_prompt(sources_text, cat_clean, format_name=fmt_name)
             raw_response = await ai.generate_response(prompt, is_json=False)
 
             if ai._is_error_response(raw_response):
@@ -167,7 +189,7 @@ async def get_or_generate_ideas(
                 citation_failure = f"មានការយោងលេខប្រភពដែលមិនមានក្នុងបញ្ជី {sorted(list(invalid_refs))}"
 
             # Per-idea check
-            parsed_ideas = parse_generated_ideas(raw_response)
+            parsed_ideas = parse_generated_ideas(raw_response, default_format=format_id or "3whs")
             if parsed_ideas:
                 for idea in parsed_ideas:
                     idea_invalid = set(idea.source_ids) - valid_ids
@@ -201,14 +223,14 @@ async def get_or_generate_ideas(
             return batch_token, parsed_ideas, evidence_records, None
 
         # Case B: Honest AI-only Fallback
-        logger.info(f"Generating honest AI-only ideas for '{cat_clean}'")
-        prompt = get_daily_ideas_prompt(cat_clean)
+        logger.info(f"Generating honest AI-only ideas for '{cat_clean}' (format: {fmt_key})")
+        prompt = get_daily_ideas_prompt(cat_clean, format_name=fmt_name)
         raw_response = await ai.generate_response(prompt, is_json=False)
 
         if ai._is_error_response(raw_response):
             return None, [], [], raw_response
 
-        parsed_ideas = parse_generated_ideas(raw_response)
+        parsed_ideas = parse_generated_ideas(raw_response, default_format=format_id or "3whs")
         for i in parsed_ideas:
             i.evidence_status = "ai_only"
             i.source_ids = []

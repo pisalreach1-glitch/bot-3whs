@@ -53,9 +53,10 @@ async def execute_generation_request(
         target_s = 60
 
     dur_str = f"{target_s} វិនាទី" if target_s < 60 else f"{target_s // 60} នាទី"
+    niche = draft.get("niche") or "ទូទៅ"
     format_id = draft.get("format_id", "3whs")
     topic = draft.get("topic", "").strip()
-    audience = draft.get("audience", topic)
+    audience = draft.get("audience", "")
 
     if not topic:
         err_msg = "⚠️ សូមបញ្ចូលប្រធានបទមាតិកាជាមុនសិន។"
@@ -66,19 +67,19 @@ async def execute_generation_request(
     if format_id == "comedy" or request.operation == "comedy" or draft.get("comedy_style"):
         style = draft.get("comedy_style", "everyday")
         actors = draft.get("actor_count", 1)
-        prompt = get_comedy_prompt(topic, style, actors, dur_str)
+        prompt = get_comedy_prompt(topic, style, actors, dur_str, niche=niche, audience=audience)
     elif format_id == "pov":
-        prompt = get_pov_story_prompt(topic, audience, dur_str)
+        prompt = get_pov_story_prompt(topic, niche, dur_str, audience=audience)
     elif format_id == "myth":
-        prompt = get_myth_reality_prompt(topic, audience, dur_str)
+        prompt = get_myth_reality_prompt(topic, niche, dur_str, audience=audience)
     elif format_id == "transform":
-        prompt = get_before_after_prompt(topic, audience, dur_str)
+        prompt = get_before_after_prompt(topic, niche, dur_str, audience=audience)
     elif format_id == "hottake":
-        prompt = get_hot_take_prompt(topic, audience, dur_str)
+        prompt = get_hot_take_prompt(topic, niche, dur_str, audience=audience)
     elif format_id == "toplist":
-        prompt = get_top_list_prompt(topic, audience, dur_str)
+        prompt = get_top_list_prompt(topic, niche, dur_str, audience=audience)
     else:
-        prompt = get_script_generation_prompt(topic, dur_str)
+        prompt = get_script_generation_prompt(topic, dur_str, niche=niche, audience=audience)
 
     # Attach evidence guidance if present
     if request.evidence_snapshot:
