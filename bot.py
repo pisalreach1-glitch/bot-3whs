@@ -46,6 +46,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
         self.wfile.write("3WHs Bot Running!".encode("utf-8"))
+
     def log_message(self, format, *args):
         return
 
@@ -62,114 +63,102 @@ def start_health_check_server():
         logger.error(f"Health check server error: {e}")
 
 # ─────────────────────────────────────────────
-# Projects Config
-# ─────────────────────────────────────────────
-PROJECTS = {
-    "3whs": {
-        "id": "3whs",
-        "emoji": "🎬",
-        "name": "3WHs Content",
-        "niche": "3WHs Video Content",
-        "description": "Script / Content ទូទៅ TikTok & Reels",
-        "default_duration": "60 វិនាទី",
-    },
-    "haknheng": {
-        "id": "haknheng",
-        "emoji": "🍳",
-        "name": "សាលាហ្វឹកហ្វែន ហាក់ហេង",
-        "niche": "សាលាបង្រៀនធ្វើម្ហូបហាក់ហេង",
-        "description": "Content ម្ហូបខ្មែរ + ការបង្រៀន",
-        "default_duration": "60 វិនាទី",
-    },
-}
-
-# ─────────────────────────────────────────────
-# Content Types Config
+# 6 Viral Content Types Config
 # ─────────────────────────────────────────────
 CONTENT_TYPES = {
     "3whs": {
         "emoji": "🎬",
         "name": "3WHs Hook Script",
-        "description": "Script Video ពេញលេញ (Hook→What→Why→How→CTA)",
+        "description": "Script វីដេអូខ្លីពេញលេញ (Hook→What→Why→How→CTA)",
         "question": (
-            "🎬 *3WHs Hook Script*\n\n"
-            "📝 *សូមប្រាប់ប្រធានបទ ឬទិដ្ឋភាព* ដែលអ្នកចង់ធ្វើ Script:\n\n"
-            "_ឧទាហរណ៍:_\n"
-            "• «វិធីធ្វើបាយឆា ១០ នាទី»\n"
-            "• «៣ ជំហានជ្រើសម្ហូបស្រស់»\n"
-            "• «ហេតុអ្វីហ្វឹកហ្វែនម្ហូបសំខាន់»"
+            "🎬 *3WHs Hook Script (ស្គ្រីបវីដេអូខ្លី)*\n\n"
+            "📝 *សូមប្រាប់ពីប្រធានបទ ឬអាជីវកម្មរបស់អ្នក* ដែលចង់ធ្វើ Script៖\n\n"
+            "_ឧទាហរណ៍៖_\n"
+            "• «លក់សម្លៀកបំពាក់នារី» ឬ «វិធីរើសខោខូវប៊យឱ្យសមរាង»\n"
+            "• «បង្រៀនធ្វើម្ហូបខ្មែរ» ឬ «របៀបឆាសាច់គោឱ្យទន់ឆ្ងាញ់»\n"
+            "• «អចលនទ្រព្យ» ឬ «គន្លឹះទិញដីធ្លីដំបូងកុំឱ្យចាញ់បោកគេ»\n"
+            "• «ហាងកាហ្វេ» ឬ «វិធីឆុងកាហ្វេ Cold Brew ខ្លួនឯង»\n"
+            "• «គន្លឹះសន្សំប្រាក់សម្រាប់អ្នកធ្វើការ»"
         ),
     },
     "pov": {
         "emoji": "🎭",
         "name": "POV / Storytelling",
-        "description": "Story ពិត ទាក់ Emotion + Watch Time ខ្ពស់",
+        "description": "រឿងពិត ទាក់អារម្មណ៍ Emotion + Watch Time ខ្ពស់",
         "question": (
-            "🎭 *POV / Storytelling*\n\n"
-            "📝 *POV ស្ថានភាព ឬ Story* ដែលអ្នកចង់ Play:\n\n"
-            "_ឧទាហរណ៍:_\n"
-            "• «POV: ថ្ងៃដំបូងខ្ញុំចូលរៀនធ្វើម្ហូប»\n"
-            "• «ពេលដែរ Customer ដំបូងចូលហាង»\n"
-            "• «POV: ខ្ញុំធ្វើបដិបត្តិការ ១ ម្ហូប ១ ថ្ងៃ»"
+            "🎭 *POV / Storytelling (អារម្មណ៍ & រឿងពិត)*\n\n"
+            "📝 *សូមប្រាប់ពីស្ថានភាព (POV) ឬរឿងរ៉ាវ* ដែលអ្នកចង់ចែករំលែក៖\n\n"
+            "_ឧទាហរណ៍៖_\n"
+            "• «POV: ថ្ងៃដំបូងដែលខ្ញុំចាប់ផ្តើមលក់អនឡាញ គ្មានអ្នកទិញសោះ»\n"
+            "• «ពេលដែលអតិថិជនសុំតថ្លៃស្ទើរស្មើដើម»\n"
+            "• «POV: ថ្ងៃដំបូងចូលរៀនជំនាញថ្មី ទាំងដែលគ្មានមូលដ្ឋាន»\n"
+            "• «ពេលដែល Order ដំបូងផ្ទុះឡើង វេចខ្ចប់ដល់យប់ជ្រៅ»\n"
+            "• «POV: មិត្តភក្តិគិតថាការងារ Freelance ស្រួលណាស់»"
         ),
     },
     "myth": {
         "emoji": "⚡",
         "name": "Myth vs Reality",
-        "description": "បំបែក Misconception → Comment ច្រើន + Viral",
+        "description": "បំបែកការយល់ខុស → មនុស្សចូលចិត្ត Comment & Debate",
         "question": (
-            "⚡ *Myth vs Reality*\n\n"
-            "📝 *ការយល់ច្រឡំ ឬ Myth* ដែលអ្នកចង់បំបែក:\n\n"
-            "_ឧទាហរណ៍:_\n"
-            "• «ម្ហូបខ្មែរ ធ្វើពិបាក ចំណាយពេល»\n"
-            "• «ហ្វឹកហ្វែនម្ហូបត្រូវចំណាយថ្លៃ»\n"
-            "• «Chef ល្អ ត្រូវចេះ Recipe ច្រើន»"
+            "⚡ *Myth vs Reality (កែកំហុសយល់ខុស)*\n\n"
+            "📝 *សូមប្រាប់ពីការយល់ច្រឡំ ឬជំនឿខុស* ក្នុងវិស័យរបស់អ្នក៖\n\n"
+            "_ឧទាហរណ៍៖_\n"
+            "• «លក់អនឡាញទាល់តែមានដើមទុនរាប់ពាន់ដុល្លារទើបធ្វើបាន»\n"
+            "• «ធ្វើម្ហូបខ្មែរពិបាក និងចំណាយពេលយូរ»\n"
+            "• «ទាល់តែនិយាយពូកែទើបអាចធ្វើ Content វីដេអូបាន»\n"
+            "• «ការតមបាយយប់ ជួយឱ្យស្រកទម្ងន់លឿន»\n"
+            "• «បើកហាងកាហ្វេស្រួលចំណេញណាស់»"
         ),
     },
     "transform": {
         "emoji": "🔄",
         "name": "Before & After",
-        "description": "Transformation Visual → Save + Share ច្រើន",
+        "description": "ការផ្លាស់ប្តូរ & លទ្ធផលជាក់ស្តែង → Save & Share ច្រើន",
         "question": (
-            "🔄 *Before & After*\n\n"
-            "📝 *ការផ្លាស់ប្ដូរ ឬ Transformation* ដែលអ្នកចង់បង្ហាញ:\n\n"
-            "_ឧទាហរណ៍:_\n"
-            "• «មុន-ក្រោយ រៀនម្ហូប ៣០ ថ្ងៃ»\n"
-            "• «គ្រឿងផ្សំ Raw → មុខម្ហូបស្រស់ស្អាត»\n"
-            "• «Student ដំបូង → Chef ក្នុង ១ ខែ»"
+            "🔄 *Before & After (ការផ្លាស់ប្តូរជាក់ស្តែង)*\n\n"
+            "📝 *សូមប្រាប់ពីការផ្លាស់ប្ដូរ (មុន និង ក្រោយ)* ដែលអ្នកចង់បង្ហាញ៖\n\n"
+            "_ឧទាហរណ៍៖_\n"
+            "• «មុន និង ក្រោយប្រើផលិតផលថែរក្សាស្បែក ៣០ ថ្ងៃ»\n"
+            "• «ពីអ្នកមិនចេះធ្វើម្ហូបសោះ រហូតបើកហាងផ្ទាល់ខ្លួន»\n"
+            "• «បន្ទប់ចាស់ទ្រុឌទ្រោម រៀបចំឡើងវិញក្លាយជាស្អាតដូច Mini Studio»\n"
+            "• «ពីអ្នកខ្លាចកាមេរ៉ា ក្លាយជា Content Creator រកចំណូលបាន»\n"
+            "• «មុន និង ក្រោយរៀបចំផែនការហិរញ្ញវត្ថុ ៦ ខែ»"
         ),
     },
     "hottake": {
         "emoji": "🌶️",
         "name": "Hot Take / Opinion",
-        "description": "Controversial Opinion → Debate → Algorithm Boost",
+        "description": "គំនិតប្លែក ឬផ្ទុយពីគេ → ទាក់ទាញ Comment ផ្ទុះ",
         "question": (
-            "🌶️ *Hot Take / Opinion*\n\n"
-            "📝 *មតិ ឬ Opinion* ដែរអ្នកចង់ចែករំលែក:\n\n"
-            "_ឧទាហរណ៍:_\n"
-            "• «ហ្វឹកហ្វែនម្ហូប Online ល្អជាង Offline»\n"
-            "• «ម្ហូប Fusion ចំណោះ Overrated»\n"
-            "• «Creator ម្ហូបខ្មែរ ធ្វើ Content ខ្លាំងជាង»"
+            "🌶️ *Hot Take / Opinion (មតិប្លែក ឬផ្ទុយពីគេ)*\n\n"
+            "📝 *សូមប្រាប់ពីមតិផ្ទុយ ឬទស្សនៈប្លែក* របស់អ្នក៖\n\n"
+            "_ឧទាហរណ៍៖_\n"
+            "• «ការបញ្ចុះតម្លៃមិនមែនជាវិធីលក់ដាច់ល្អបំផុតទេ»\n"
+            "• «រៀនជំនាញជាក់ស្តែង មានប្រយោជន៍ជាងសញ្ញាបត្រមួយចំនួន»\n"
+            "• «ធ្វើ Content ច្រើន មិនស្មើនឹងធ្វើ Content ត្រូវចិត្តមនុស្សទេ»\n"
+            "• «មិនចាំបាច់មានទូរស័ព្ទថ្លៃ ទើបអាចថតវីដេអូស្អាតបាននោះឡើយ»"
         ),
     },
     "toplist": {
         "emoji": "📋",
         "name": "Top List / Ranking",
-        "description": "List / Ranking → Save ច្រើន + Comment",
+        "description": "បញ្ជី Top 3, 5, 7 ចំណុចសំខាន់ៗ → ងាយ Save ទុក",
         "question": (
-            "📋 *Top List / Ranking*\n\n"
-            "📝 *Top ប៉ុន្មាន? ប្រភេទ/ប្រធានបទអ្វី?*\n\n"
-            "_ឧទាហរណ៍:_\n"
-            "• «Top 5 ម្ហូបខ្មែរ ដែរឆ្ងាញ់គ្រប់ Season»\n"
-            "• «7 Mistakes Student ថ្មីតែងធ្វើ»\n"
-            "• «3 ហ្វឹកហ្វែន ដែរ ROI ខ្ពស់»"
+            "📋 *Top List / Ranking (បញ្ជី Top)*\n\n"
+            "📝 *តើអ្នកចង់ធ្វើ Top ប៉ុន្មាន និងលើប្រធានបទអ្វី?*\n\n"
+            "_ឧទាហរណ៍៖_\n"
+            "• «Top 5 កំហុសដែលអ្នកលក់អនឡាញថ្មីៗតែងជួប»\n"
+            "• «Top 3 មុខម្ហូបខ្មែរងាយស្រួលធ្វើ និងចំណាយតិចបំផុត»\n"
+            "• «Top 4 App ជួយកាត់តវីដេអូលើទូរស័ព្ទដោយឥតគិតថ្លៃ»\n"
+            "• «Top 5 វិធីសន្សំប្រាក់ឱ្យសល់ច្រើនក្នុងមួយខែ»\n"
+            "• «Top 3 សៀវភៅដែលអ្នករកស៊ីគួរតែអាន»"
         ),
     },
 }
 
-DEFAULT_PROJECT_ID = "3whs"
 DEFAULT_DURATION = "60 វិនាទី"
-DEFAULT_DAILY_TIME = "5:00 ព្រឹក"
+DEFAULT_DAILY_TIME = "08:00"
 
 # ─────────────────────────────────────────────
 # Persistence
@@ -195,28 +184,16 @@ def save_user_settings_to_file(settings: dict):
 
 user_settings = load_user_settings()
 
-def get_user_config(chat_id: int) -> dict:
+def get_user_duration(chat_id: int) -> str:
+    cfg = user_settings.get(str(chat_id), {})
+    return cfg.get("duration", DEFAULT_DURATION)
+
+def set_user_duration(chat_id: int, duration: str):
     str_id = str(chat_id)
     if str_id not in user_settings:
-        user_settings[str_id] = {
-            "project_id": DEFAULT_PROJECT_ID,
-            "duration": DEFAULT_DURATION,
-            "daily_time": DEFAULT_DAILY_TIME,
-            "niche": PROJECTS[DEFAULT_PROJECT_ID]["niche"],
-        }
-        save_user_settings_to_file(user_settings)
-    return user_settings[str_id]
-
-def update_user_config(chat_id: int, key: str, value: str):
-    cfg = get_user_config(chat_id)
-    cfg[key] = value
-    user_settings[str(chat_id)] = cfg
+        user_settings[str_id] = {}
+    user_settings[str_id]["duration"] = duration
     save_user_settings_to_file(user_settings)
-
-def get_active_project(chat_id: int) -> dict:
-    cfg = get_user_config(chat_id)
-    pid = cfg.get("project_id", DEFAULT_PROJECT_ID)
-    return PROJECTS.get(pid, PROJECTS[DEFAULT_PROJECT_ID])
 
 def load_subscribers() -> set:
     if os.path.exists(SUBSCRIBERS_FILE):
@@ -282,123 +259,91 @@ async def safe_edit(status_msg, text: str):
             await status_msg.reply_text(chunk)
 
 # ─────────────────────────────────────────────
-# Keyboards
+# Keyboards (Option 2 - Direct to Content Formats)
 # ─────────────────────────────────────────────
-def get_project_selector_keyboard() -> InlineKeyboardMarkup:
-    """Step 1: Choose a Project."""
+def get_main_menu_keyboard() -> InlineKeyboardMarkup:
+    """Main Menu showing all 6 Content Formats directly."""
     keyboard = [
-        [InlineKeyboardButton(
-            f"{proj['emoji']} {proj['name']}",
-            callback_data=f"project:{pid}"
-        )]
-        for pid, proj in PROJECTS.items()
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_content_type_keyboard(project_id: str) -> InlineKeyboardMarkup:
-    """Step 2: Choose a Content Type."""
-    type_buttons = [
-        [
-            InlineKeyboardButton(
-                f"{ct['emoji']} {ct['name']}",
-                callback_data=f"ctype:{project_id}:{cid}"
-            )
-        ]
+        [InlineKeyboardButton(f"{ct['emoji']} {ct['name']}", callback_data=f"ctype:{cid}")]
         for cid, ct in CONTENT_TYPES.items()
     ]
-    # Bottom row: utilities
-    type_buttons.append([
-        InlineKeyboardButton("💡 Ideas ស្វ័យប្រវត្ត", callback_data=f"ideas:{project_id}"),
-        InlineKeyboardButton("⚙️ ការកំណត់", callback_data=f"settings:{project_id}"),
+    # Extra quick utilities
+    keyboard.append([
+        InlineKeyboardButton("💡 គំនិត Content (Ideas)", callback_data="ideas"),
+        InlineKeyboardButton("⚙️ រយៈពេលវីដេអូ", callback_data="settings"),
     ])
-    type_buttons.append([
-        InlineKeyboardButton("🔙 ជ្រើស Project ម្ដងទៀត", callback_data="back_projects"),
+    keyboard.append([
+        InlineKeyboardButton("🔔 Subscribe ប្រចាំថ្ងៃ", callback_data="subscribe"),
+        InlineKeyboardButton("📊 ស្ថានភាពប្រព័ន្ធ", callback_data="status"),
     ])
-    return InlineKeyboardMarkup(type_buttons)
+    return InlineKeyboardMarkup(keyboard)
 
-def get_settings_keyboard(project_id: str) -> InlineKeyboardMarkup:
-    """Settings sub-menu."""
+def get_settings_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    """Settings menu for duration."""
+    current = get_user_duration(chat_id)
+    def mark(d):
+        return f"✅ {d}" if d == current else d
+
     keyboard = [
         [
-            InlineKeyboardButton("⚡ 60 វិនាទី", callback_data=f"dur:{project_id}:60 វិនាទី"),
-            InlineKeyboardButton("🎯 2 នាទី", callback_data=f"dur:{project_id}:2 នាទី"),
+            InlineKeyboardButton(mark("60 វិនាទី"), callback_data="dur:60 វិនាទី"),
+            InlineKeyboardButton(mark("2 នាទី"), callback_data="dur:2 នាទី"),
         ],
         [
-            InlineKeyboardButton("🎬 3 នាទី", callback_data=f"dur:{project_id}:3 នាទី"),
-            InlineKeyboardButton("🎥 5 នាទី", callback_data=f"dur:{project_id}:5 នាទី"),
+            InlineKeyboardButton(mark("3 នាទី"), callback_data="dur:3 នាទី"),
+            InlineKeyboardButton(mark("5 នាទី"), callback_data="dur:5 នាទី"),
         ],
         [
-            InlineKeyboardButton("🔔 Subscribe ប្រចាំថ្ងៃ", callback_data=f"subscribe:{project_id}"),
-            InlineKeyboardButton("📊 Status", callback_data=f"status:{project_id}"),
-        ],
-        [
-            InlineKeyboardButton("🔙 ត្រឡប់", callback_data=f"project:{project_id}"),
+            InlineKeyboardButton("🔙 ត្រឡប់ទៅ Menu ដើម", callback_data="main_menu"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_done_keyboard(project_id: str) -> InlineKeyboardMarkup:
-    """After content is generated — quick next actions."""
+def get_done_keyboard() -> InlineKeyboardMarkup:
+    """Action buttons after content is generated."""
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🔄 Content Type ថ្មី", callback_data=f"project:{project_id}"),
-            InlineKeyboardButton("🏠 Menu ដើម", callback_data="back_projects"),
+            InlineKeyboardButton("🔄 ផលិត Content ថ្មី", callback_data="main_menu"),
+            InlineKeyboardButton("⚙️ ប្ដូររយៈពេល", callback_data="settings"),
         ]
     ])
 
 # ─────────────────────────────────────────────
 # Screen Renderers
 # ─────────────────────────────────────────────
-def render_welcome() -> str:
-    lines = [
-        "👋 *សួស្តី! ខ្ញុំជា 3WHs AI Content Bot* 🤖",
-        "",
-        "📂 *សូមជ្រើសរើស Project:*",
-        "━━━━━━━━━━━━━━━━━━",
-    ]
-    for proj in PROJECTS.values():
-        lines.append(f"{proj['emoji']} *{proj['name']}* — {proj['description']}")
-    lines += ["━━━━━━━━━━━━━━━━━━", "_👇 ចុចជ្រើស Project ខាងក្រោម_"]
-    return "\n".join(lines)
-
-def render_content_type_menu(project_id: str, chat_id: int) -> str:
-    proj = PROJECTS.get(project_id, PROJECTS[DEFAULT_PROJECT_ID])
-    cfg = get_user_config(chat_id)
-    duration = cfg.get("duration", proj["default_duration"])
+def render_welcome(chat_id: int) -> str:
+    duration = get_user_duration(chat_id)
     return (
-        f"{proj['emoji']} *{proj['name']}*\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"🎯 *វិស័យ:* {proj['niche']}\n"
-        f"⏱️ *រយៈពេល:* {duration}\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"✨ *ជ្រើស Content Format ដែលអ្នកចង់បង្កើត:*\n"
-        f"_(ចុចប៊ូតុង → Bot សួរ ១ សំណួរ → Generate ភ្លាម!)_"
+        "👋 *សួស្តី! ខ្ញុំជា 3WHs AI Content Bot* 🤖\n"
+        "ជំនួយការផលិតមាតិកា Viral លើ TikTok, Reels & Shorts!\n\n"
+        f"⏱️ *រយៈពេលវីដេអូបច្ចុប្បន្ន:* `{duration}`\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "✨ *សូមជ្រើសរើសទម្រង់មាតិកា (Format) ដែលអ្នកចង់ផលិត៖*\n"
+        "_(ចុចប៊ូតុង → Bot សួរ ១ សំណួរ → AI បង្កើតជូនភ្លាមៗ!)_"
     )
 
-def render_settings_menu(project_id: str, chat_id: int) -> str:
-    proj = PROJECTS.get(project_id, PROJECTS[DEFAULT_PROJECT_ID])
-    cfg = get_user_config(chat_id)
-    duration = cfg.get("duration", proj["default_duration"])
+def render_settings(chat_id: int) -> str:
+    duration = get_user_duration(chat_id)
     is_subbed = chat_id in subscribers
     return (
-        f"⚙️ *ការកំណត់* — {proj['emoji']} {proj['name']}\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"⏱️ *រយៈពេលបច្ចុប្បន្ន:* {duration}\n"
-        f"🔔 *Subscribe:* {'✅ បើក' if is_subbed else '❌ មិនទាន់'}\n"
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"_ចុចជ្រើសរយៈពេលខាងក្រោម:_"
+        "⚙️ *ការកំណត់រយៈពេលវីដេអូ*\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"• ⏱️ រយៈពេលបច្ចុប្បន្ន៖ *{duration}*\n"
+        f"• 🔔 ទទួលគំនិតប្រចាំថ្ងៃ៖ {'✅ បើក' if is_subbed else '❌ មិនទាន់'}\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "_សូមជ្រើសរើសរយៈពេលវីដេអូដែលអ្នកចង់បានខាងក្រោម៖_"
     )
 
 # ─────────────────────────────────────────────
 # Command Handlers
 # ─────────────────────────────────────────────
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Shows the Project Selector (Step 1)."""
-    # Clear any pending state
+    """Directly shows the Main Content Format Menu."""
     context.user_data.clear()
-    msg = render_welcome()
-    keyboard = get_project_selector_keyboard()
-    target = update.message or update.callback_query.message
+    chat_id = update.effective_chat.id
+    msg = render_welcome(chat_id)
+    keyboard = get_main_menu_keyboard()
+    target = update.message or (update.callback_query.message if update.callback_query else None)
     try:
         if update.callback_query:
             await update.callback_query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
@@ -409,44 +354,42 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
-        "📖 *Commands*\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "🔹 /start — Menu ជ្រើស Project\n"
-        "🔹 /ideas — គំនិតប្រធានបទថ្ងៃនេះ\n"
-        "🔹 /status — ស្ថានភាពប្រព័ន្ធ\n"
-        "🔹 /subscribe — Subscribe ប្រចាំថ្ងៃ\n"
-        "🔹 /unsubscribe — បិទ Subscribe\n\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "💡 _ប្រើ /start → ចុចប៊ូតុង ងាយជាងវាយ Command!_"
+        "📖 *ការណែនាំប្រើប្រាស់ Bot*\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "🔹 /start — បង្ហាញ Menu ទម្រង់ Content ទាំង ៦\n"
+        "🔹 /ideas — បង្កើតគំនិតមាតិកា Viral ថ្មីៗ\n"
+        "🔹 /status — ពិនិត្យស្ថានភាពប្រព័ន្ធ\n"
+        "🔹 /subscribe — ទទួលគំនិតមាតិការៀងរាល់ព្រឹក\n"
+        "🔹 /unsubscribe — បិទការទទួលសារប្រចាំព្រឹក\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "💡 _គ្រាន់តែចុច /start រួចចុចលើប៊ូតុងដើម្បីជ្រើសរើស format ងាយស្រួលបំផុត!_"
     )
     target = update.message if update.message else update.callback_query.message
     await safe_reply(target, help_text)
 
 async def ideas_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    proj = get_active_project(chat_id)
     target = update.message if update.message else update.callback_query.message
-    status_msg = await target.reply_text(
-        f"💡 *កំពុងបង្កើតគំនិត* {proj['emoji']} *{proj['name']}*..."
-    )
-    response = await ai_service.generate_daily_ideas(proj["niche"])
+    status_msg = await target.reply_text("💡 *កំពុងបង្កើតគំនិតមាតិកា Viral ថ្មីៗ...*")
+    response = await ai_service.generate_daily_ideas("មាតិកាទូទៅ និងអាជីវកម្ម")
     await safe_edit(status_msg, response)
+    await target.reply_text(
+        "✅ *គំនិតខាងលើ!* តើអ្នកចង់ជ្រើស Format ណាមួយដើម្បីបង្កើត Script?",
+        parse_mode="Markdown",
+        reply_markup=get_done_keyboard()
+    )
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    cfg = get_user_config(chat_id)
-    proj = get_active_project(chat_id)
+    duration = get_user_duration(chat_id)
     is_subbed = chat_id in subscribers
     is_ai_ok = ai_service.is_configured()
     text = (
-        "📊 *System Status*\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        f"• 📂 Project: *{proj['emoji']} {proj['name']}*\n"
-        f"• 🎯 វិស័យ: *{proj['niche']}*\n"
-        f"• ⏱️ រយៈពេល: *{cfg.get('duration', proj['default_duration'])}*\n"
-        f"• 🔔 Subscribe: {'✅ បើក' if is_subbed else '❌ មិនទាន់'}\n"
-        f"• 🧠 AI: {'🟢 ដំណើរការ' if is_ai_ok else '🔴 គ្មាន Key'}\n"
-        "━━━━━━━━━━━━━━━━━━"
+        "📊 *ស្ថានភាពប្រព័ន្ធ (System Status)*\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"• ⏱️ រយៈពេលវីដេអូ: *{duration}*\n"
+        f"• 🔔 Subscribe ប្រចាំថ្ងៃ: {'✅ បើក' if is_subbed else '❌ មិនទាន់'}\n"
+        f"• 🧠 AI Engine: {'🟢 ដំណើរការធម្មតា' if is_ai_ok else '🔴 គ្មាន API Key'}\n"
+        "━━━━━━━━━━━━━━━━━━━━━"
     )
     target = update.message if update.message else update.callback_query.message
     await safe_reply(target, text)
@@ -455,13 +398,11 @@ async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     subscribers.add(chat_id)
     save_subscribers(subscribers)
-    cfg = get_user_config(chat_id)
-    daily_time = cfg.get("daily_time", DEFAULT_DAILY_TIME)
     msg = (
         "✅ *Subscribe ជោគជ័យ!* 🎉\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        f"Bot នឹងផ្ញើ Ideas & Script 3WHs ថ្មីៗ\n"
-        f"ជារៀងរាល់ព្រឹក ម៉ោង *{daily_time}* ដោយស្វ័យប្រវត្ត 🚀"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "Bot នឹងផ្ញើគំនិត Content & Script 3WHs ថ្មីៗ\n"
+        "ជារៀងរាល់ព្រឹក ម៉ោង *08:00* ដោយស្វ័យប្រវត្តិ 🚀"
     )
     if update.callback_query:
         await update.callback_query.answer("Subscribe ជោគជ័យ! ✅")
@@ -473,9 +414,9 @@ async def unsubscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if chat_id in subscribers:
         subscribers.remove(chat_id)
         save_subscribers(subscribers)
-        msg = "🔕 *បិទ Subscribe ជោគជ័យ!*"
+        msg = "🔕 *បានបិទ Subscribe រួចរាល់!*"
     else:
-        msg = "ℹ️ អ្នកមិនទាន់ Subscribe នៅឡើយទេ។"
+        msg = "ℹ️ អ្នកមិនទាន់បាន Subscribe នៅឡើយទេ។"
     target = update.message if update.message else update.callback_query.message
     await safe_reply(target, msg)
 
@@ -487,56 +428,33 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     data = query.data
     chat_id = update.effective_chat.id
 
-    # ── STEP 1: Project Select ─────────────────
-    if data.startswith("project:"):
-        pid = data.split(":", 1)[1]
-        if pid not in PROJECTS:
-            await query.answer("Project មិនមាន!")
-            return
-        proj = PROJECTS[pid]
-        # Save active project
-        update_user_config(chat_id, "project_id", pid)
-        update_user_config(chat_id, "niche", proj["niche"])
-        # Clear any pending state
-        context.user_data.clear()
-
-        msg = render_content_type_menu(pid, chat_id)
-        keyboard = get_content_type_keyboard(pid)
-        await query.answer(f"{proj['emoji']} {proj['name']}")
-        try:
-            await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
-        except Exception:
-            await query.message.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
-
-    # ── Back to Project List ───────────────────
-    elif data == "back_projects":
+    # ── Return to Main Menu ────────────────────
+    if data == "main_menu":
         context.user_data.clear()
         await query.answer()
-        msg = render_welcome()
-        keyboard = get_project_selector_keyboard()
+        msg = render_welcome(chat_id)
+        keyboard = get_main_menu_keyboard()
         try:
             await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
         except Exception:
             await query.message.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
 
-    # ── STEP 2: Content Type Select ───────────
+    # ── Select Content Type ───────────────────
     elif data.startswith("ctype:"):
-        _, pid, cid = data.split(":", 2)
+        cid = data.split(":", 1)[1]
         if cid not in CONTENT_TYPES:
-            await query.answer("Content Type មិនមាន!")
+            await query.answer("Content Type មិនត្រឹមត្រូវ!")
             return
         ct = CONTENT_TYPES[cid]
 
-        # Set state: waiting for user's topic answer
+        # Set state: awaiting user's topic
         context.user_data["state"] = "awaiting_topic"
         context.user_data["content_type"] = cid
-        context.user_data["project_id"] = pid
 
         await query.answer(f"{ct['emoji']} {ct['name']}")
-        # Ask the 1 targeted question
         question_text = ct["question"]
         cancel_keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔙 ត្រឡប់", callback_data=f"project:{pid}")
+            InlineKeyboardButton("🔙 ត្រឡប់ទៅ Menu ដើម", callback_data="main_menu")
         ]])
         try:
             await query.edit_message_text(
@@ -551,54 +469,47 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
                 reply_markup=cancel_keyboard
             )
 
-    # ── Ideas (Auto, no question) ──────────────
-    elif data.startswith("ideas:"):
-        pid = data.split(":", 1)[1]
-        proj = PROJECTS.get(pid, PROJECTS[DEFAULT_PROJECT_ID])
+    # ── Ideas Button ──────────────────────────
+    elif data == "ideas":
         await query.answer("💡 កំពុងបង្កើតគំនិត...")
-        status_msg = await query.message.reply_text(
-            f"💡 *កំពុងបង្កើត Ideas* {proj['emoji']} *{proj['name']}*..."
-        )
-        response = await ai_service.generate_daily_ideas(proj["niche"])
+        status_msg = await query.message.reply_text("💡 *កំពុងបង្កើតគំនិតមាតិកា Viral ថ្មីៗ...*")
+        response = await ai_service.generate_daily_ideas("មាតិកាទូទៅ និងអាជីវកម្ម")
         await safe_edit(status_msg, response)
-        # Show done keyboard
         await query.message.reply_text(
-            "✅ *Ideas ខាងលើ!* ចង់ធ្វើ Content ផ្សេងទៀត?",
+            "✅ *គំនិតខាងលើ!* ចង់ជ្រើស Format ណាមួយដើម្បីផលិត Script?",
             parse_mode="Markdown",
-            reply_markup=get_done_keyboard(pid)
+            reply_markup=get_done_keyboard()
         )
 
-    # ── Settings ──────────────────────────────
-    elif data.startswith("settings:"):
-        pid = data.split(":", 1)[1]
+    # ── Settings Button ───────────────────────
+    elif data == "settings":
         await query.answer()
-        msg = render_settings_menu(pid, chat_id)
-        keyboard = get_settings_keyboard(pid)
+        msg = render_settings(chat_id)
+        keyboard = get_settings_keyboard(chat_id)
         try:
             await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
         except Exception:
             await query.message.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
 
-    # ── Duration Quick Pick ────────────────────
+    # ── Set Duration ──────────────────────────
     elif data.startswith("dur:"):
-        parts = data.split(":", 2)
-        pid, dur = parts[1], parts[2]
-        update_user_config(chat_id, "duration", dur)
-        await query.answer(f"✅ ប្ដូរទៅ {dur}")
-        # Go back to content type menu
-        msg = render_content_type_menu(pid, chat_id)
-        keyboard = get_content_type_keyboard(pid)
+        dur = data.split(":", 1)[1]
+        set_user_duration(chat_id, dur)
+        await query.answer(f"✅ បានកំណត់រយៈពេល {dur}")
+        # Return to main menu with updated duration
+        msg = render_welcome(chat_id)
+        keyboard = get_main_menu_keyboard()
         try:
             await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
         except Exception:
             await query.message.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
 
-    # ── Subscribe ─────────────────────────────
-    elif data.startswith("subscribe:"):
+    # ── Subscribe Button ──────────────────────
+    elif data == "subscribe":
         await subscribe_command(update, context)
 
-    # ── Status ────────────────────────────────
-    elif data.startswith("status:"):
+    # ── Status Button ─────────────────────────
+    elif data == "status":
         await query.answer()
         await status_command(update, context)
 
@@ -612,13 +523,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     state = context.user_data.get("state")
 
-    # ── STATE: Awaiting topic for content generation ──
+    # ── STATE: Awaiting user's topic for chosen format ──
     if state == "awaiting_topic":
         content_type = context.user_data.get("content_type", "3whs")
-        project_id = context.user_data.get("project_id", DEFAULT_PROJECT_ID)
-        proj = PROJECTS.get(project_id, PROJECTS[DEFAULT_PROJECT_ID])
-        cfg = get_user_config(update.effective_chat.id)
-        duration = cfg.get("duration", proj["default_duration"])
+        duration = get_user_duration(update.effective_chat.id)
         ct = CONTENT_TYPES.get(content_type, CONTENT_TYPES["3whs"])
 
         # Clear state immediately
@@ -627,28 +535,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Show generating status
         status_msg = await update.message.reply_text(
             f"⏳ *កំពុងបង្កើត {ct['emoji']} {ct['name']}...*\n"
-            f"_វិស័យ: {proj['niche']}_\n"
-            f"_ប្រវែង: {duration}_"
+            f"_ប្រធានបទ/វិស័យ: {user_text}_\n"
+            f"_រយៈពេល: {duration}_\n\n"
+            "សូមរង់ចាំមួយភ្លែត..."
         )
 
-        # Generate content
+        # Generate content with Gemini
         response = await ai_service.generate_content_by_type(
             content_type=content_type,
             topic=user_text,
-            niche=proj["niche"],
+            niche=user_text,
             duration=duration,
         )
         await safe_edit(status_msg, response)
 
         # Show quick action buttons after done
         await update.message.reply_text(
-            f"✅ *{ct['emoji']} {ct['name']} ខាងលើ!*\n"
-            "ចង់ធ្វើ Content ផ្សេងទៀតទេ?",
+            f"✅ *{ct['emoji']} {ct['name']} រួចរាល់!*\n"
+            "តើអ្នកចង់បង្កើត Content អ្វីបន្តទៀត?",
             parse_mode="Markdown",
-            reply_markup=get_done_keyboard(project_id)
+            reply_markup=get_done_keyboard()
         )
 
-    # ── Default: Free-text AI chat ───────────
+    # ── Default: Free-text AI chat ────────────
     else:
         await update.message.chat.send_action("typing")
         response = await ai_service.chat(user_text)
@@ -663,13 +572,13 @@ async def send_daily_content(context: ContextTypes.DEFAULT_TYPE):
         return
     for chat_id in list(subscribers):
         try:
-            proj = get_active_project(chat_id)
-            content = await ai_service.generate_daily_ideas(proj["niche"])
+            content = await ai_service.generate_daily_ideas("មាតិកាទូទៅ និងអាជីវកម្ម")
             msg = (
-                f"☀️ *អរុណសួស្តី!* {proj['emoji']}\n"
-                f"*{proj['name']}* — Ideas ថ្ងៃនេះ:\n\n"
+                "☀️ *អរុណសួស្តី! គំនិតមាតិកា Viral ថ្ងៃនេះ* 💡\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"{content}\n\n"
-                f"💡 _ចុច /start → ជ្រើស Content Type → Generate Script ភ្លាម!_"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "💡 _ចុច /start ដើម្បីជ្រើសរើស Content Type រួចបង្កើត Script ភ្លាមៗ!_"
             )
             await context.bot.send_message(
                 chat_id=chat_id, text=msg, parse_mode="Markdown"
@@ -702,7 +611,7 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     # Daily scheduler
-    daily_time_str = os.getenv("DAILY_TIME", "05:00")
+    daily_time_str = os.getenv("DAILY_TIME", "08:00")
     timezone_str = os.getenv("TIMEZONE", "Asia/Phnom_Penh")
     try:
         hour, minute = map(int, daily_time_str.split(":"))
@@ -715,7 +624,7 @@ def main():
         logger.error(f"Scheduler error: {e}")
 
     print("\n" + "=" * 50)
-    print("3WHs Telegram Bot Agent - Running...")
+    print("3WHs Telegram Bot Agent - Running (Direct Format Menu)...")
     print("Go to Telegram and press /start !")
     print("=" * 50 + "\n")
 
