@@ -109,13 +109,13 @@ class TestNicheAndFormats(unittest.TestCase):
         all_buttons = [btn for row in kb.inline_keyboard for btn in row]
         button_texts = [btn.text for btn in all_buttons]
         self.assertTrue(any("ប្ដូរវិស័យ" in txt for txt in button_texts))
-        self.assertTrue(any("3WHs Hook Script" in txt for txt in button_texts))
-        self.assertTrue(any("POV / Storytelling" in txt for txt in button_texts))
-        self.assertTrue(any("Myth vs Reality" in txt for txt in button_texts))
-        self.assertTrue(any("Before & After" in txt for txt in button_texts))
-        self.assertTrue(any("Hot Take / Opinion" in txt for txt in button_texts))
-        self.assertTrue(any("Top List / Ranking" in txt for txt in button_texts))
-        self.assertTrue(any("Comedy" in txt for txt in button_texts))
+        self.assertTrue(any("3WHs" in txt for txt in button_texts))
+        self.assertTrue(any("POV" in txt for txt in button_texts))
+        self.assertTrue(any("Myth" in txt or "ជំនឿខុស" in txt for txt in button_texts))
+        self.assertTrue(any("Before & After" in txt or "មុន & ក្រោយ" in txt for txt in button_texts))
+        self.assertTrue(any("Hot Take" in txt or "មតិផ្ទុយ" in txt for txt in button_texts))
+        self.assertTrue(any("Top List" in txt or "បញ្ជីកំពូល" in txt for txt in button_texts))
+        self.assertTrue(any("Comedy" in txt or "កំប្លែង" in txt for txt in button_texts))
 
     # 2. Saved niche is stored and reused
     def test_saved_niche_storage_and_reuse(self):

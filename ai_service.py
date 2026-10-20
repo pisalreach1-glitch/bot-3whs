@@ -74,7 +74,7 @@ class AIService:
             import google.generativeai as genai_legacy
             genai_legacy.configure(api_key=self.api_key)
             self.client = genai_legacy.GenerativeModel(
-                model_name="gemini-2.5-flash",
+                model_name="gemini-2.0-flash",
                 system_instruction=SYSTEM_INSTRUCTION
             )
             self.sdk_type = "google-generativeai"
@@ -146,7 +146,6 @@ class AIService:
                 return "⚠️ សូមបញ្ចូល `GEMINI_API_KEY` នៅក្នុង file `.env` ជាមុនសិន!"
 
         models_to_try = [
-            "gemini-2.5-flash",
             "gemini-2.0-flash",
             "gemini-1.5-flash",
         ]

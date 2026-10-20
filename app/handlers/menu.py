@@ -34,16 +34,17 @@ from app.views import (
     render_topic_prompt,
 )
 from app.handlers.commands import get_user_key
+from app.telegram_io import safe_edit
 
 logger = logging.getLogger(__name__)
 
 NICHE_MAP = {
-    "food": "🍜 Food / Cooking",
-    "coffee": "☕️ Coffee / Beverages",
-    "sales": "🛍 Sales / Online Business",
-    "education": "📚 Education / Skills",
-    "tech": "📱 Technology / AI",
-    "selfdev": "🌱 Personal Development",
+    "food": "🍜 ម្ហូបអាហារ / ធ្វើម្ហូប",
+    "coffee": "☕️ កាហ្វេ / ភេសជ្ជៈ",
+    "sales": "🛍 ការលក់ / អាជីវកម្មអនឡាញ",
+    "education": "📚 ការអប់រំ / បង្កើនជំនាញ",
+    "tech": "📱 បច្ចេកវិទ្យា / AI",
+    "selfdev": "🌱 ការអភិវឌ្ឍខ្លួន",
 }
 
 async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -66,7 +67,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         settings = storage.get_settings(user_key)
         msg = render_welcome(settings["duration"])
         keyboard = get_main_menu_keyboard()
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
         return
 
     # ── BACK ──────────────────────────────────
@@ -80,7 +81,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         navigation.go_to(user_key, Screens.NICHE_SELECTION)
         msg = render_niche_selection()
         keyboard = get_niche_selection_keyboard()
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
         return
 
     # ── MENU: NICHE PICK ──────────────────────
@@ -95,7 +96,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 "_ឧទាហរណ៍៖ Khmer cooking, ទេសចរណ៍ និងដើរលេង, ហិរញ្ញវត្ថុផ្ទាល់ខ្លួន, សុខភាព..._\n\n"
                 "💡 _អ្នកអាចចុច ⬅️ ត្រឡប់ក្រោយ ឬ /cancel ដើម្បីបោះបង់!_"
             )
-            await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_back_home_keyboard())
+            await safe_edit(query, msg, reply_markup=get_back_home_keyboard())
             return
 
         chosen_niche = NICHE_MAP.get(niche_token, niche_token)
@@ -126,7 +127,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         msg = notice_text + render_format_selection(chosen_niche)
         keyboard = get_format_selection_keyboard(draft)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
         return
 
     # ── MENU: CREATE SCRIPT ───────────────────
@@ -137,7 +138,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             navigation.go_to(user_key, Screens.NICHE_SELECTION)
             msg = render_niche_selection()
             keyboard = get_niche_selection_keyboard()
-            await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+            await safe_edit(query, msg, reply_markup=keyboard)
             return
 
         settings = storage.get_settings(user_key)
@@ -160,7 +161,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
         msg = render_format_selection(saved_niche)
         keyboard = get_format_selection_keyboard(draft)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     # ── MENU: COMEDY ──────────────────────────
     elif action == "comedy":
@@ -169,7 +170,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             navigation.go_to(user_key, Screens.NICHE_SELECTION)
             msg = render_niche_selection()
             keyboard = get_niche_selection_keyboard()
-            await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+            await safe_edit(query, msg, reply_markup=keyboard)
             return
 
         settings = storage.get_settings(user_key)
@@ -194,7 +195,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
         msg = render_topic_or_ideas(draft.format_id, draft.niche)
         keyboard = get_topic_or_ideas_keyboard(draft)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     # ── TOPIC OR IDEAS CHOICES ────────────────
     elif action == "top_custom":
@@ -210,7 +211,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         storage.save_draft(user_key, draft)
         navigation.go_to(user_key, Screens.TOPIC_INPUT, draft_id=draft.id)
         msg = render_topic_prompt(draft.format_id, draft.niche)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_back_home_keyboard())
+        await safe_edit(query, msg, reply_markup=get_back_home_keyboard())
 
     elif action == "top_ideas":
         draft_id = decoded.token
@@ -246,14 +247,14 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 "សូមចុច **[🎬 បង្កើត Script]** ឬ **[😂 បង្កើតកំប្លែង]** ដើម្បីចាប់ផ្តើមផលិត Script ដំបូងរបស់អ្នក!"
             )
             keyboard = get_main_menu_keyboard()
-            await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+            await safe_edit(query, msg, reply_markup=keyboard)
             return
 
         navigation.go_to(user_key, Screens.SCRIPT_SUMMARY, script_id=script.id, script_version=script.version)
         settings = storage.get_settings(user_key)
         msg = render_script_summary(script, settings["pace"])
         keyboard = get_script_actions_keyboard(script)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     # ── MENU: SETTINGS ────────────────────────
     elif action == "settings":
@@ -262,14 +263,14 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         is_subbed = storage.is_subscribed(user_key)
         msg = render_settings(settings["duration"], settings["pace"], is_subbed)
         keyboard = get_settings_keyboard(settings["duration"], is_subbed)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     # ── MENU: HELP ────────────────────────────
     elif action == "help":
         navigation.go_to(user_key, Screens.HELP)
         msg = render_help()
         keyboard = get_back_home_keyboard()
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     # ── EDIT TOPIC IN DRAFT ───────────────────
     elif action == "edit_top":
@@ -285,7 +286,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         storage.save_draft(user_key, draft)
         navigation.go_to(user_key, Screens.TOPIC_INPUT, draft_id=draft.id)
         msg = f"✏️ *កែប្រែប្រធានបទ*\n\nប្រធានបទបច្ចុប្បន្ន៖ *{draft.topic}*\n\n" + render_topic_prompt(draft.format_id, draft.niche)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_back_home_keyboard())
+        await safe_edit(query, msg, reply_markup=get_back_home_keyboard())
 
     # ── EDIT DURATION IN DRAFT ────────────────
     elif action == "edit_dur":
@@ -300,7 +301,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         navigation.go_to(user_key, Screens.DRAFT_DURATION, draft_id=draft.id)
         msg = "⏱️ *ជ្រើសរើសរយៈពេលវីដេអូសម្រាប់ Script នេះ (Duration)*\n\nសូមជ្រើសរើសរយៈពេលខាងក្រោម៖"
         keyboard = get_draft_duration_keyboard(draft)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     # ── EDIT FAILED REQUEST ───────────────────
     elif action == "edit_failed":
@@ -327,7 +328,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         settings = storage.get_settings(user_key)
         msg = render_review(draft, settings["pace"])
         keyboard = get_review_keyboard(draft)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
 async def render_current_screen(query, user_key: UserKey, screen: str, state, storage):
     """Renders the screen restored by Back action."""
@@ -336,12 +337,12 @@ async def render_current_screen(query, user_key: UserKey, screen: str, state, st
     if screen == Screens.HOME:
         msg = render_welcome(settings["duration"])
         keyboard = get_main_menu_keyboard()
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     elif screen == Screens.NICHE_SELECTION:
         msg = render_niche_selection()
         keyboard = get_niche_selection_keyboard()
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     elif screen == Screens.FORMAT_SELECTION:
         niche = storage.get_user_niche(user_key)
@@ -363,7 +364,7 @@ async def render_current_screen(query, user_key: UserKey, screen: str, state, st
             storage.save_draft(user_key, draft)
         msg = render_format_selection(niche)
         keyboard = get_format_selection_keyboard(draft)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     elif screen == Screens.TOPIC_OR_IDEAS:
         draft = storage.get_draft(state.draft_id) if state.draft_id else None
@@ -371,7 +372,7 @@ async def render_current_screen(query, user_key: UserKey, screen: str, state, st
             return await render_current_screen(query, user_key, Screens.FORMAT_SELECTION, state, storage)
         msg = render_topic_or_ideas(draft.format_id, draft.niche)
         keyboard = get_topic_or_ideas_keyboard(draft)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     elif screen == Screens.DRAFT_DURATION:
         draft = storage.get_draft(state.draft_id) if state.draft_id else None
@@ -379,14 +380,14 @@ async def render_current_screen(query, user_key: UserKey, screen: str, state, st
             return await render_current_screen(query, user_key, Screens.HOME, state, storage)
         msg = "⏱️ *ជ្រើសរើសរយៈពេលវីដេអូសម្រាប់ Script នេះ (Duration)*\n\nសូមជ្រើសរើសរយៈពេលខាងក្រោម៖"
         keyboard = get_draft_duration_keyboard(draft)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     elif screen == Screens.TOPIC_INPUT:
         draft = storage.get_draft(state.draft_id) if state.draft_id else None
         if not draft:
             return await render_current_screen(query, user_key, Screens.HOME, state, storage)
         msg = render_topic_prompt(draft.format_id, draft.niche)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_back_home_keyboard())
+        await safe_edit(query, msg, reply_markup=get_back_home_keyboard())
 
     elif screen == Screens.DRAFT_REVIEW:
         draft = storage.get_draft(state.draft_id) if state.draft_id else None
@@ -394,7 +395,7 @@ async def render_current_screen(query, user_key: UserKey, screen: str, state, st
             return await render_current_screen(query, user_key, Screens.HOME, state, storage)
         msg = render_review(draft, settings["pace"])
         keyboard = get_review_keyboard(draft)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     elif screen in (Screens.SCRIPT_SUMMARY, Screens.SCRIPT_READ, Screens.SCRIPT_SHOTS, Screens.SCRIPT_CAPTION):
         script = storage.get_script(state.selected_script_id, state.selected_script_version) if (state.selected_script_id and state.selected_script_version) else storage.get_last_successful_script(user_key)
@@ -402,16 +403,16 @@ async def render_current_screen(query, user_key: UserKey, screen: str, state, st
             return await render_current_screen(query, user_key, Screens.HOME, state, storage)
         msg = render_script_summary(script, settings["pace"])
         keyboard = get_script_actions_keyboard(script)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     elif screen == Screens.SETTINGS:
         is_subbed = storage.is_subscribed(user_key)
         msg = render_settings(settings["duration"], settings["pace"], is_subbed)
         keyboard = get_settings_keyboard(settings["duration"], is_subbed)
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)
 
     else:
         # Fallback to HOME
         msg = render_welcome(settings["duration"])
         keyboard = get_main_menu_keyboard()
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+        await safe_edit(query, msg, reply_markup=keyboard)

@@ -168,6 +168,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
             from app.views import render_format_selection
             from app.keyboards import get_format_selection_keyboard
+            from app.telegram_io import safe_reply
 
             notice = (
                 f"✅ *បានកំណត់វិស័យផ្ទាល់ខ្លួន៖* `{custom_niche}`\n"
@@ -175,11 +176,11 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             msg = notice + render_format_selection(custom_niche)
             keyboard = get_format_selection_keyboard(draft)
-            await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+            await safe_reply(update.message, msg, reply_markup=keyboard)
             return
 
-    # 1. State: Entering Topic for Draft
-    elif state.current_screen == Screens.TOPIC_INPUT and state.draft_id:
+    # 1. State: Entering Topic for Draft (Flexible at Topic Input, Topic/Ideas, or Format Selection)
+    elif (state.current_screen in (Screens.TOPIC_INPUT, Screens.TOPIC_OR_IDEAS, Screens.FORMAT_SELECTION, Screens.IDEA_RESULTS)) and state.draft_id:
         draft = storage.get_draft(state.draft_id)
         if draft:
             draft.topic = user_text.strip()
@@ -194,10 +195,11 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             settings = storage.get_settings(user_key)
             from app.views import render_review
             from app.keyboards import get_review_keyboard
+            from app.telegram_io import safe_reply
 
             msg = render_review(draft, settings["pace"])
             keyboard = get_review_keyboard(draft)
-            await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+            await safe_reply(update.message, msg, reply_markup=keyboard)
             return
 
     # 2. State: Entering Pace Seconds
@@ -231,54 +233,61 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 # Callback Query Dispatcher
 # ─────────────────────────────────────────────
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Central dispatcher for all compact callback schemes."""
+    """Central dispatcher for all compact callback schemes with exception safety."""
     query = update.callback_query
     data = query.data or ""
 
-    if data.startswith("m:") or data.startswith("n:"):
-        await handle_menu_callback(update, context)
-    elif data.startswith("f:"):
-        await handle_format_callback(update, context)
-    elif data.startswith("d:"):
-        await handle_draft_duration_callback(update, context)
-    elif data.startswith("g:"):
-        await handle_generate_callback(update, context)
-    elif data.startswith("r:"):
-        await handle_retry_callback(update, context)
-    elif data.startswith("i:"):
-        await handle_idea_pick_callback(update, context)
-    elif data.startswith("s:"):
-        await handle_script_action_callback(update, context)
-    elif data.startswith("h:"):
-        await handle_hook_pick_callback(update, context)
-    elif data.startswith("c:"):
-        await handle_comedy_callback(update, context)
-    elif data.startswith("set:"):
-        await handle_settings_callback(update, context)
-    elif data.startswith("x:"):
-        await cancel_command(update, context)
-    elif data.startswith("refine:"):
-        # Legacy callback handler for tests
-        action = data.split(":")[1]
-        ai = context.bot_data.get("ai", default_ai) if (hasattr(context, "bot_data") and isinstance(context.bot_data, dict)) else default_ai
-        last_plan = context.user_data.get("last_script_plan") if hasattr(context, "user_data") else None
-        if action == "shorten":
-            res = await ai.refine_shorten(last_plan)
-        elif action == "regen":
-            res = await ai.refine_regenerate(last_plan)
-        else:
-            res = None
+    try:
+        if data.startswith("m:") or data.startswith("n:"):
+            await handle_menu_callback(update, context)
+        elif data.startswith("f:"):
+            await handle_format_callback(update, context)
+        elif data.startswith("d:"):
+            await handle_draft_duration_callback(update, context)
+        elif data.startswith("g:"):
+            await handle_generate_callback(update, context)
+        elif data.startswith("r:"):
+            await handle_retry_callback(update, context)
+        elif data.startswith("i:"):
+            await handle_idea_pick_callback(update, context)
+        elif data.startswith("s:"):
+            await handle_script_action_callback(update, context)
+        elif data.startswith("h:"):
+            await handle_hook_pick_callback(update, context)
+        elif data.startswith("c:"):
+            await handle_comedy_callback(update, context)
+        elif data.startswith("set:"):
+            await handle_settings_callback(update, context)
+        elif data.startswith("x:"):
+            await cancel_command(update, context)
+        elif data.startswith("refine:"):
+            # Legacy callback handler for tests
+            action = data.split(":")[1]
+            ai = context.bot_data.get("ai", default_ai) if (hasattr(context, "bot_data") and isinstance(context.bot_data, dict)) else default_ai
+            last_plan = context.user_data.get("last_script_plan") if hasattr(context, "user_data") else None
+            if action == "shorten":
+                res = await ai.refine_shorten(last_plan)
+            elif action == "regen":
+                res = await ai.refine_regenerate(last_plan)
+            else:
+                res = None
 
-        if res and getattr(res, "success", False) and getattr(res, "plan", None):
-            if hasattr(context, "user_data"):
-                context.user_data["last_script"] = res.formatted_text
-                context.user_data["last_script_plan"] = res.plan
-            await query.message.reply_text("រួចរាល់!\n" + res.formatted_text)
+            if res and getattr(res, "success", False) and getattr(res, "plan", None):
+                if hasattr(context, "user_data"):
+                    context.user_data["last_script"] = res.formatted_text
+                    context.user_data["last_script_plan"] = res.plan
+                await query.message.reply_text("រួចរាល់!\n" + res.formatted_text)
+            else:
+                err = getattr(res, "error_message", None) or "កំហុសបច្ចេកទេស"
+                await query.message.reply_text(f"មិនទាន់ជោគជ័យ៖ {err}")
         else:
-            err = getattr(res, "error_message", None) or "កំហុសបច្ចេកទេស"
-            await query.message.reply_text(f"មិនទាន់ជោគជ័យ៖ {err}")
-    else:
-        await query.answer("សំណើមិនត្រឹមត្រូវឡើយ!", show_alert=True)
+            await query.answer("សំណើមិនត្រឹមត្រូវឡើយ!", show_alert=True)
+    except Exception as e:
+        logger.error(f"Error handling callback {data}: {e}", exc_info=True)
+        try:
+            await query.answer("⚠️ មានបញ្ហាបច្ចេកទេសមួយភ្លែត។ សូមសាកល្បងម្ដងទៀត!", show_alert=True)
+        except Exception:
+            pass
 
 # ─────────────────────────────────────────────
 # Backward Compatibility Wrappers

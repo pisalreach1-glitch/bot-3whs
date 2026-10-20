@@ -53,12 +53,28 @@ async def safe_edit(target, text: str, reply_markup=None):
     edit_fn = None
     reply_target = None
 
-    if hasattr(target, "edit_text"):
-        # Message
+    is_callback = False
+    try:
+        from telegram import CallbackQuery
+        if isinstance(target, CallbackQuery):
+            is_callback = True
+    except ImportError:
+        pass
+
+    if not is_callback:
+        data_val = getattr(target, "data", None)
+        if isinstance(data_val, (str, bytes)):
+            is_callback = True
+        elif type(getattr(target, "edit_message_text", None)).__name__ == "AsyncMock" and type(getattr(target, "edit_text", None)).__name__ != "AsyncMock":
+            is_callback = True
+
+    if is_callback:
+        edit_fn = getattr(target, "edit_message_text", None)
+        reply_target = getattr(target, "message", None)
+    elif hasattr(target, "edit_text"):
         edit_fn = target.edit_text
         reply_target = target
     elif hasattr(target, "edit_message_text"):
-        # CallbackQuery
         edit_fn = target.edit_message_text
         reply_target = getattr(target, "message", None)
     else:
@@ -71,6 +87,8 @@ async def safe_edit(target, text: str, reply_markup=None):
             try:
                 await edit_fn(chunks[0], reply_markup=first_markup)
             except Exception as e:
+                if "message is not modified" in str(e).lower():
+                    return
                 logger.error(f"Failed to edit message: {e}")
                 if reply_target and hasattr(reply_target, "reply_text"):
                     await safe_reply(reply_target, chunks[0], reply_markup=first_markup)

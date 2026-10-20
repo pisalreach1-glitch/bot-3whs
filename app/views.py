@@ -10,13 +10,13 @@ from app.models import Draft, SavedScript, Idea, EvidenceRecord
 from script_models import ScriptPlan, Scene, format_timestamp
 
 FORMAT_NAMES = {
-    "3whs": "🎬 3WHs Hook Script",
-    "pov": "🎭 POV / Storytelling",
-    "myth": "⚡️ Myth vs Reality",
-    "transform": "🔄 Before & After",
-    "hottake": "🌶 Hot Take / Opinion",
-    "toplist": "📋 Top List / Ranking",
-    "comedy": "😂 Comedy",
+    "3whs": "🎬 ស្គ្រីប 3WHs Hook",
+    "pov": "🎭 POV / ការនិទានរឿង",
+    "myth": "⚡️ ការពិត vs ជំនឿខុស (Myth vs Reality)",
+    "transform": "🔄 មុន & ក្រោយ (Before & After)",
+    "hottake": "🌶 មតិផ្ទុយ / ប្លែក (Hot Take)",
+    "toplist": "📋 បញ្ជីកំពូល / ចាត់ថ្នាក់ (Top List)",
+    "comedy": "😂 កំប្លែងខ្លី (Comedy)",
 }
 
 NICHE_EXAMPLES = {
@@ -69,7 +69,7 @@ def render_niche_selection() -> str:
         "🎯 *សូមជ្រើសរើសវិស័យមាតិការបស់អ្នក (Content Niche)*\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "វិស័យមាតិកា (Niche) ជួយឱ្យ AI យល់ពីជំនាញ និងទស្សនិកជនរបស់អ្នក ដើម្បីផ្ដល់គំនិត និងបង្កើត Script បានចំគោលដៅបំផុត។\n\n"
-        "សូមជ្រើសរើសវិស័យមួយខាងក្រោម ឬជ្រើសយក **[✏️ Custom niche]** ដើម្បីវាយបញ្ចូលដោយខ្លួនឯង៖"
+        "សូមជ្រើសរើសវិស័យមួយខាងក្រោម ឬជ្រើសយក **[✏️ បញ្ចូលវិស័យផ្ទាល់ខ្លួន]** ដើម្បីវាយបញ្ចូលដោយខ្លួនឯង៖"
     )
 
 def render_format_selection(niche: Optional[str] = None) -> str:
@@ -90,7 +90,8 @@ def render_topic_or_ideas(format_id: str, niche: Optional[str] = None) -> str:
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "តើអ្នកចង់បន្តបែបណា?\n\n"
         "• ចុច **[✏️ ខ្ញុំមានប្រធានបទ]** ដើម្បីវាយបញ្ចូលប្រធានបទផ្ទាល់ខ្លួន\n"
-        "• ចុច **[💡 ស្នើគំនិតក្នុងវិស័យនេះ]** ដើម្បីឱ្យ AI រកគំនិតដែលស័ក្តិសមនឹងវិស័យ និងទម្រង់នេះ"
+        "• ចុច **[💡 ស្នើគំនិតក្នុងវិស័យនេះ]** ដើម្បីឱ្យ AI រកគំនិតដែលស័ក្តិសមនឹងវិស័យ និងទម្រង់នេះ\n\n"
+        "✍️ _(អ្នកក៏អាចវាយប្រធានបទរបស់អ្នកផ្ញើមកទីនេះដោយផ្ទាល់បានផងដែរ)_"
     )
 
 def render_topic_prompt(format_id: str, niche: Optional[str] = None) -> str:
@@ -142,11 +143,11 @@ def render_review(draft: Draft, pace: float) -> str:
     lines = [
         "📋 *ផ្ទៀងផ្ទាត់ព័ត៌មានសំណើ (Draft Review)*",
         "━━━━━━━━━━━━━━━━━━━━━",
-        f"• 🎯 **វិស័យ (Niche)**: {niche_label}",
-        f"• 🎬 **ទម្រង់មាតិកា (Format)**: {fmt_name}",
-        f"• 📝 **ប្រធានបទ (Topic)**: {draft.topic}",
+        f"• 🎯 **វិស័យមាតិកា**: {niche_label}",
+        f"• 🎬 **ទម្រង់មាតិកា**: {fmt_name}",
+        f"• 📝 **ប្រធានបទ**: {draft.topic}",
         f"• ⏱️ **រយៈពេលវីដេអូ**: `{dur_label}`",
-        f"• 🎙️ **ល្បឿននិយាយគិតទុក**: `{pace:.1f} តួអក្សរ/វិនាទី`",
+        f"• 🎙️ **ល្បឿននិយាយប៉ាន់ស្មាន**: `{pace:.1f} តួអក្សរ/វិនាទី`",
     ]
     if draft.comedy_style:
         lines.append(f"• 😂 **ស្ទីលកំប្លែង**: {draft.comedy_style}")

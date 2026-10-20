@@ -21,23 +21,23 @@ from app.callbacks import (
 from app.models import Draft, SavedScript, GenerationRequest
 
 FORMAT_DEFINITIONS = [
-    ("3whs", "🎬 3WHs Hook Script"),
-    ("pov", "🎭 POV / Storytelling"),
-    ("myth", "⚡️ Myth vs Reality"),
-    ("transform", "🔄 Before & After"),
-    ("hottake", "🌶 Hot Take / Opinion"),
-    ("toplist", "📋 Top List / Ranking"),
-    ("comedy", "😂 Comedy"),
+    ("3whs", "🎬 ស្គ្រីប 3WHs Hook"),
+    ("pov", "🎭 POV / ការនិទានរឿង"),
+    ("myth", "⚡️ ការពិត vs ជំនឿខុស (Myth vs Reality)"),
+    ("transform", "🔄 មុន & ក្រោយ (Before & After)"),
+    ("hottake", "🌶 មតិផ្ទុយ / ប្លែក (Hot Take)"),
+    ("toplist", "📋 បញ្ជីកំពូល / ចាត់ថ្នាក់ (Top List)"),
+    ("comedy", "😂 កំប្លែងខ្លី (Comedy)"),
 ]
 
 NICHE_DEFINITIONS = [
-    ("food", "🍜 Food / Cooking"),
-    ("coffee", "☕️ Coffee / Beverages"),
-    ("sales", "🛍 Sales / Online Business"),
-    ("education", "📚 Education / Skills"),
-    ("tech", "📱 Technology / AI"),
-    ("selfdev", "🌱 Personal Development"),
-    ("custom", "✏️ Custom niche"),
+    ("food", "🍜 ម្ហូបអាហារ / ធ្វើម្ហូប"),
+    ("coffee", "☕️ កាហ្វេ / ភេសជ្ជៈ"),
+    ("sales", "🛍 ការលក់ / អាជីវកម្មអនឡាញ"),
+    ("education", "📚 ការអប់រំ / បង្កើនជំនាញ"),
+    ("tech", "📱 បច្ចេកវិទ្យា / AI"),
+    ("selfdev", "🌱 ការអភិវឌ្ឍខ្លួន"),
+    ("custom", "✏️ បញ្ចូលវិស័យផ្ទាល់ខ្លួន"),
 ]
 
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
@@ -129,17 +129,17 @@ def get_review_keyboard(draft: Draft) -> InlineKeyboardMarkup:
 
 def get_draft_duration_keyboard(draft: Draft) -> InlineKeyboardMarkup:
     """Draft-specific duration selection without mutating user default settings."""
-    def mark(s):
-        return f"✅ {s}s" if draft.duration_seconds == s else f"{s}s"
+    def mark(s: int, km_lbl: str):
+        return f"✅ {km_lbl}" if draft.duration_seconds == s else km_lbl
 
     keyboard = [
         [
-            InlineKeyboardButton(mark(60), callback_data=encode_duration(draft.id, draft.revision, 60)),
-            InlineKeyboardButton(mark(120), callback_data=encode_duration(draft.id, draft.revision, 120)),
+            InlineKeyboardButton(mark(60, "៦០ វិនាទី (60s)"), callback_data=encode_duration(draft.id, draft.revision, 60)),
+            InlineKeyboardButton(mark(120, "២ នាទី (120s)"), callback_data=encode_duration(draft.id, draft.revision, 120)),
         ],
         [
-            InlineKeyboardButton(mark(180), callback_data=encode_duration(draft.id, draft.revision, 180)),
-            InlineKeyboardButton(mark(300), callback_data=encode_duration(draft.id, draft.revision, 300)),
+            InlineKeyboardButton(mark(180, "៣ នាទី (180s)"), callback_data=encode_duration(draft.id, draft.revision, 180)),
+            InlineKeyboardButton(mark(300, "៥ នាទី (300s)"), callback_data=encode_duration(draft.id, draft.revision, 300)),
         ],
         [
             InlineKeyboardButton("⬅️ ត្រឡប់ក្រោយ", callback_data=encode_nav("back")),
