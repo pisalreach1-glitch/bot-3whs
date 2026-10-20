@@ -18,6 +18,7 @@ from app.keyboards import (
     get_review_keyboard,
     get_comedy_styles_keyboard,
     get_back_home_keyboard,
+    get_draft_duration_keyboard,
 )
 from app.views import (
     render_welcome,
@@ -26,6 +27,7 @@ from app.views import (
     render_script_summary,
     render_review,
     render_help,
+    render_topic_prompt,
 )
 from app.handlers.commands import get_user_key
 
@@ -43,7 +45,10 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     action = decoded.action
 
     # ── HOME ──────────────────────────────────
-    if decoded.prefix == "n" and action == "home":
+    if (decoded.prefix in ("n", "m")) and action == "home":
+        task_mgr = context.bot_data.get("task_mgr")
+        if task_mgr:
+            await task_mgr.cancel_request(user_key)
         navigation.go_home(user_key)
         settings = storage.get_settings(user_key)
         msg = render_welcome(settings["duration"])
@@ -71,6 +76,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             duration_seconds=dur_s,
             audience="",
             current_step="format",
+            owner=user_key,
         )
         storage.save_draft(user_key, draft)
         navigation.go_to(user_key, Screens.FORMAT_SELECTION, draft_id=draft.id)
@@ -95,6 +101,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             comedy_style="everyday",
             actor_count=1,
             current_step="comedy_style",
+            owner=user_key,
         )
         storage.save_draft(user_key, draft)
         navigation.go_to(user_key, Screens.COMEDY_STYLE, draft_id=draft.id)
@@ -147,6 +154,64 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         keyboard = get_back_home_keyboard()
         await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
 
+    # ── EDIT TOPIC IN DRAFT ───────────────────
+    elif action == "edit_top":
+        draft_id = decoded.token
+        draft = storage.get_draft(draft_id) if draft_id else None
+        if not draft:
+            await query.answer("⚠️ រកមិនឃើញទិន្នន័យព្រាងឡើយ។", show_alert=True)
+            return
+        if draft.owner and draft.owner != user_key:
+            await query.answer("⚠️ អ្នកគ្មានសិទ្ធិកែប្រែ Draft របស់អ្នកដទៃឡើយ!", show_alert=True)
+            return
+        draft.current_step = "topic"
+        storage.save_draft(user_key, draft)
+        navigation.go_to(user_key, Screens.TOPIC_INPUT, draft_id=draft.id)
+        msg = f"✏️ *កែប្រែប្រធានបទ*\n\nប្រធានបទបច្ចុប្បន្ន៖ *{draft.topic}*\n\n" + render_topic_prompt(draft.format_id)
+        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_back_home_keyboard())
+
+    # ── EDIT DURATION IN DRAFT ────────────────
+    elif action == "edit_dur":
+        draft_id = decoded.token
+        draft = storage.get_draft(draft_id) if draft_id else None
+        if not draft:
+            await query.answer("⚠️ រកមិនឃើញទិន្នន័យព្រាងឡើយ។", show_alert=True)
+            return
+        if draft.owner and draft.owner != user_key:
+            await query.answer("⚠️ អ្នកគ្មានសិទ្ធិកែប្រែ Draft របស់អ្នកដទៃឡើយ!", show_alert=True)
+            return
+        navigation.go_to(user_key, Screens.DRAFT_DURATION, draft_id=draft.id)
+        msg = "⏱️ *ជ្រើសរើសរយៈពេលវីដេអូសម្រាប់ Script នេះ (Duration)*\n\nសូមជ្រើសរើសរយៈពេលខាងក្រោម៖"
+        keyboard = get_draft_duration_keyboard(draft)
+        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+
+    # ── EDIT FAILED REQUEST ───────────────────
+    elif action == "edit_failed":
+        req_id = decoded.token
+        req = storage.get_generation_request(req_id) if req_id else None
+        if not req:
+            last_failed = storage.get_last_failed_request(user_key)
+            if last_failed:
+                req = last_failed[0]
+        if not req:
+            await query.answer("⚠️ រកមិនឃើញសំណើដែលបរាជ័យឡើយ។", show_alert=True)
+            return
+        if req.owner != user_key:
+            await query.answer("⚠️ អ្នកគ្មានសិទ្ធិកែប្រែសំណើរបស់អ្នកដទៃឡើយ!", show_alert=True)
+            return
+        from app.models import Draft
+        draft = Draft.from_dict(req.draft_snapshot)
+        draft.id = f"d_{uuid.uuid4().hex[:8]}"
+        draft.revision = 1
+        draft.current_step = "review"
+        draft.owner = user_key
+        storage.save_draft(user_key, draft)
+        navigation.go_to(user_key, Screens.DRAFT_REVIEW, draft_id=draft.id)
+        settings = storage.get_settings(user_key)
+        msg = render_review(draft, settings["pace"])
+        keyboard = get_review_keyboard(draft)
+        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+
 async def render_current_screen(query, user_key: UserKey, screen: str, state, storage):
     """Renders the screen restored by Back action."""
     settings = storage.get_settings(user_key)
@@ -163,6 +228,21 @@ async def render_current_screen(query, user_key: UserKey, screen: str, state, st
         msg = render_format_selection()
         keyboard = get_format_selection_keyboard(draft)
         await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+
+    elif screen == Screens.DRAFT_DURATION:
+        draft = storage.get_draft(state.draft_id) if state.draft_id else None
+        if not draft:
+            return await render_current_screen(query, user_key, Screens.HOME, state, storage)
+        msg = "⏱️ *ជ្រើសរើសរយៈពេលវីដេអូសម្រាប់ Script នេះ (Duration)*\n\nសូមជ្រើសរើសរយៈពេលខាងក្រោម៖"
+        keyboard = get_draft_duration_keyboard(draft)
+        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=keyboard)
+
+    elif screen == Screens.TOPIC_INPUT:
+        draft = storage.get_draft(state.draft_id) if state.draft_id else None
+        if not draft:
+            return await render_current_screen(query, user_key, Screens.HOME, state, storage)
+        msg = render_topic_prompt(draft.format_id)
+        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_back_home_keyboard())
 
     elif screen == Screens.DRAFT_REVIEW:
         draft = storage.get_draft(state.draft_id) if state.draft_id else None

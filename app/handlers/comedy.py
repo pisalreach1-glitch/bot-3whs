@@ -29,7 +29,16 @@ async def handle_comedy_callback(update: Update, context: ContextTypes.DEFAULT_T
     decoded = decode_callback(query.data)
 
     draft = storage.get_draft(decoded.token)
-    if not draft or draft.revision != decoded.version_or_rev:
+    if not draft:
+        await query.answer("⚠️ រកមិនឃើញទិន្នន័យព្រាងឡើយ។", show_alert=True)
+        return
+
+    # Check ownership
+    if draft.owner and draft.owner != user_key:
+        await query.answer("⚠️ អ្នកគ្មានសិទ្ធិកែប្រែ Draft របស់អ្នកដទៃឡើយ!", show_alert=True)
+        return
+
+    if draft.revision != decoded.version_or_rev:
         await query.answer("⚠️ ប៊ូតុងនេះផុតសុពលភាពហើយ។", show_alert=True)
         return
 

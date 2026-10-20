@@ -287,6 +287,7 @@ class Storage:
                 actor_count=row["actor_count"],
                 evidence_ids=json.loads(row["evidence_ids_json"]),
                 current_step=row["current_step"],
+                owner=UserKey(row["chat_id"], row["user_id"]),
             )
 
     def save_draft(self, user_key: UserKey, draft: Draft):
@@ -493,6 +494,37 @@ class Storage:
                 "evidence": evidence,
                 "created_at": row["created_at"],
             }
+
+    def get_recent_evidence_for_user(self, user_key: UserKey, evidence_ids: List[str]) -> List[EvidenceRecord]:
+        """Retrieves EvidenceRecord objects matching evidence_ids from recent idea batches."""
+        if not evidence_ids:
+            return []
+        ids_set = {str(eid) for eid in evidence_ids}
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT evidence_json FROM idea_batches
+                WHERE chat_id = ? AND user_id = ?
+                ORDER BY created_at DESC LIMIT 10
+            """, (user_key.chat_id, user_key.user_id))
+            rows = cursor.fetchall()
+            if not rows:
+                cursor.execute("""
+                    SELECT evidence_json FROM idea_batches
+                    ORDER BY created_at DESC LIMIT 10
+                """)
+                rows = cursor.fetchall()
+
+            found: Dict[str, EvidenceRecord] = {}
+            for row in rows:
+                try:
+                    ev_list = [EvidenceRecord.from_dict(e) for e in json.loads(row["evidence_json"])]
+                    for ev in ev_list:
+                        if str(ev.id) in ids_set and str(ev.id) not in found:
+                            found[str(ev.id)] = ev
+                except Exception as e:
+                    logger.warning(f"Error parsing evidence_json: {e}")
+            return list(found.values())
 
     # ─────────────────────────────────────────────
     # Hook Options

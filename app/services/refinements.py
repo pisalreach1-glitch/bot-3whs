@@ -55,30 +55,10 @@ async def shorten_script(
         lines.append(f"Scene {sc.scene_number} ({sc.start_seconds}-{sc.end_seconds}s): {sc.spoken_text_km}")
     script_content = "\n".join(lines)
 
-    prompt = get_refine_shorten_prompt(script_content, dur_str)
-    raw_response = await ai.generate_response(prompt, is_json=True)
-
-    if not task_mgr.is_current_request(user_key, token):
-        return GenerationResult(success=False, error_code=ErrorCodes.CANCELLED, user_message_km="សំណើត្រូវបានបោះបង់")
-
-    if ai._is_error_response(raw_response):
-        storage.save_failed_request(user_key, script.request_snapshot, ErrorCodes.QUOTA if "quota" in raw_response.lower() else ErrorCodes.INTERNAL_ERROR, raw_response)
-        return GenerationResult(success=False, error_code=ErrorCodes.INTERNAL_ERROR, user_message_km=raw_response)
-
+    req_id = f"req_{uuid.uuid4().hex[:8]}"
     pace = script.request_snapshot.pace_units_per_second
-    plan_result = validate_and_build_plan(raw_response, target_s, pace)
-
-    if not plan_result.success or plan_result.plan is None:
-        storage.save_failed_request(user_key, script.request_snapshot, ErrorCodes.INVALID_SCHEMA, plan_result.formatted_text)
-        return GenerationResult(success=False, error_code=ErrorCodes.INVALID_SCHEMA, user_message_km=plan_result.formatted_text)
-
-    if not task_mgr.is_current_request(user_key, token):
-        return GenerationResult(success=False, error_code=ErrorCodes.CANCELLED, user_message_km="សំណើត្រូវបានបោះបង់")
-
-    # Create new version atomically
-    new_version = version + 1
     new_req = GenerationRequest(
-        id=f"req_{uuid.uuid4().hex[:8]}",
+        id=req_id,
         operation="shorten",
         owner=user_key,
         draft_snapshot=script.request_snapshot.draft_snapshot,
@@ -88,6 +68,27 @@ async def shorten_script(
         evidence_snapshot=script.request_snapshot.evidence_snapshot,
     )
 
+    prompt = get_refine_shorten_prompt(script_content, dur_str)
+    raw_response = await ai.generate_response(prompt, is_json=True)
+
+    if not task_mgr.is_current_request(user_key, token):
+        return GenerationResult(success=False, error_code=ErrorCodes.CANCELLED, user_message_km="សំណើត្រូវបានបោះបង់", request_id=req_id)
+
+    if ai._is_error_response(raw_response):
+        storage.save_failed_request(user_key, new_req, ErrorCodes.QUOTA if "quota" in raw_response.lower() else ErrorCodes.INTERNAL_ERROR, raw_response)
+        return GenerationResult(success=False, error_code=ErrorCodes.INTERNAL_ERROR, user_message_km=raw_response, request_id=req_id)
+
+    plan_result = validate_and_build_plan(raw_response, target_s, pace)
+
+    if not plan_result.success or plan_result.plan is None:
+        storage.save_failed_request(user_key, new_req, ErrorCodes.INVALID_SCHEMA, plan_result.formatted_text)
+        return GenerationResult(success=False, error_code=ErrorCodes.INVALID_SCHEMA, user_message_km=plan_result.formatted_text, request_id=req_id)
+
+    if not task_mgr.is_current_request(user_key, token):
+        return GenerationResult(success=False, error_code=ErrorCodes.CANCELLED, user_message_km="សំណើត្រូវបានបោះបង់", request_id=req_id)
+
+    # Create new version atomically
+    new_version = version + 1
     new_script = SavedScript(
         id=script_id,
         version=new_version,
@@ -99,7 +100,7 @@ async def shorten_script(
     storage.save_successful_script(new_script)
     logger.info(f"Shortened script {script_id} created as version {new_version}")
 
-    return GenerationResult(success=True, script=new_script, user_message_km="✅ Script ត្រូវបានសង្ខេបឱ្យខ្លីខ្លឹមរួចរាល់!")
+    return GenerationResult(success=True, script=new_script, user_message_km="✅ Script ត្រូវបានសង្ខេបឱ្យខ្លីខ្លឹមរួចរាល់!", request_id=req_id)
 
 async def regenerate_script(
     user_key: UserKey,

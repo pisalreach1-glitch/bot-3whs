@@ -32,6 +32,7 @@ from app.views import (
 )
 from app.services.generation import execute_generation_request
 from app.handlers.commands import get_user_key
+from app.telegram_io import safe_edit
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,11 @@ async def handle_format_callback(update: Update, context: ContextTypes.DEFAULT_T
     draft = storage.get_draft(decoded.token)
     if not draft:
         await query.message.reply_text("⚠️ រកមិនឃើញទិន្នន័យព្រាង (Draft) ឡើយ។ សូមចាប់ផ្តើមជាថ្មី។")
+        return
+
+    # Check ownership
+    if draft.owner and draft.owner != user_key:
+        await query.answer("⚠️ អ្នកគ្មានសិទ្ធិកែប្រែ Draft របស់អ្នកដទៃឡើយ!", show_alert=True)
         return
 
     # Check stale revision
@@ -72,7 +78,16 @@ async def handle_draft_duration_callback(update: Update, context: ContextTypes.D
     decoded = decode_callback(query.data)
 
     draft = storage.get_draft(decoded.token)
-    if not draft or draft.revision != decoded.version_or_rev:
+    if not draft:
+        await query.answer("⚠️ រកមិនឃើញទិន្នន័យព្រាងឡើយ។", show_alert=True)
+        return
+
+    # Check ownership
+    if draft.owner and draft.owner != user_key:
+        await query.answer("⚠️ អ្នកគ្មានសិទ្ធិកែប្រែ Draft របស់អ្នកដទៃឡើយ!", show_alert=True)
+        return
+
+    if draft.revision != decoded.version_or_rev:
         await query.answer("⚠️ ប៊ូតុងនេះផុតសុពលភាពហើយ។", show_alert=True)
         return
 
@@ -102,6 +117,11 @@ async def handle_generate_callback(update: Update, context: ContextTypes.DEFAULT
         await query.answer("⚠️ រកមិនឃើញទិន្នន័យព្រាងឡើយ។", show_alert=True)
         return
 
+    # Check ownership
+    if draft.owner and draft.owner != user_key:
+        await query.answer("⚠️ អ្នកគ្មានសិទ្ធិបង្កើត Script ពី Draft របស់អ្នកដទៃឡើយ!", show_alert=True)
+        return
+
     if draft.revision != decoded.version_or_rev:
         await query.answer("⚠️ សំណើនេះត្រូវបានកែប្រែរួចហើយ (Stale action)។", show_alert=True)
         return
@@ -115,8 +135,7 @@ async def handle_generate_callback(update: Update, context: ContextTypes.DEFAULT
     # Load evidence records if any
     evidence_snapshot = []
     if draft.evidence_ids:
-        # Retrieve evidence from recent batch if cached
-        pass
+        evidence_snapshot = storage.get_recent_evidence_for_user(user_key, draft.evidence_ids)
 
     request = GenerationRequest(
         id=request_id,
@@ -158,17 +177,11 @@ async def handle_generate_callback(update: Update, context: ContextTypes.DEFAULT
             )
             summary_msg = render_script_summary(result.script, settings["pace"])
             actions_kb = get_script_actions_keyboard(result.script)
-            try:
-                await status_msg.edit_text(summary_msg, parse_mode="Markdown", reply_markup=actions_kb)
-            except Exception:
-                await status_msg.edit_text(summary_msg, reply_markup=actions_kb)
+            await safe_edit(status_msg, summary_msg, reply_markup=actions_kb)
         else:
             fail_msg = render_failure(result.error_code or "ERROR", result.user_message_km)
-            fail_kb = get_failure_keyboard(request_id)
-            try:
-                await status_msg.edit_text(fail_msg, parse_mode="Markdown", reply_markup=fail_kb)
-            except Exception:
-                await status_msg.edit_text(fail_msg, reply_markup=fail_kb)
+            fail_kb = get_failure_keyboard(result.request_id or request_id)
+            await safe_edit(status_msg, fail_msg, reply_markup=fail_kb)
 
     finally:
         await task_mgr.finish_request(user_key, token)

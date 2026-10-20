@@ -78,6 +78,10 @@ async def handle_idea_pick_callback(update: Update, context: ContextTypes.DEFAUL
         await query.answer("⚠️ បញ្ជីគំនិតនេះផុតកំណត់ហើយ។ សូមទាញយកគំនិតថ្មី។", show_alert=True)
         return
 
+    if batch.get("owner") and batch["owner"] != user_key:
+        await query.answer("⚠️ អ្នកគ្មានសិទ្ធិជ្រើសរើសគំនិតរបស់អ្នកដទៃឡើយ!", show_alert=True)
+        return
+
     if idea_idx < 1 or idea_idx > len(batch["ideas"]):
         await query.answer("⚠️ លេខគំនិតមិនត្រឹមត្រូវ។", show_alert=True)
         return
@@ -96,6 +100,7 @@ async def handle_idea_pick_callback(update: Update, context: ContextTypes.DEFAUL
         audience=chosen_idea.topic,
         evidence_ids=[str(s) for s in chosen_idea.source_ids],
         current_step="review",
+        owner=user_key,
     )
     storage.save_draft(user_key, draft)
     navigation.go_to(user_key, Screens.DRAFT_REVIEW, draft_id=draft.id)

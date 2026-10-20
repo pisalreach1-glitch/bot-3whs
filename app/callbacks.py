@@ -96,10 +96,16 @@ def decode_callback(data: str) -> DecodedCallback:
     prefix = parts[0]
 
     if prefix == "m" and len(parts) >= 2:
-        return DecodedCallback(prefix="m", action=parts[1], raw_data=data)
+        action = parts[1]
+        token = parts[2] if len(parts) >= 3 else None
+        extra = ":".join(parts[3:]) if len(parts) > 3 else None
+        return DecodedCallback(prefix="m", action=action, token=token, extra=extra, raw_data=data)
 
     elif prefix == "n" and len(parts) >= 2:
-        return DecodedCallback(prefix="n", action=parts[1], raw_data=data)
+        action = parts[1]
+        token = parts[2] if len(parts) >= 3 else None
+        extra = ":".join(parts[3:]) if len(parts) > 3 else None
+        return DecodedCallback(prefix="n", action=action, token=token, extra=extra, raw_data=data)
 
     elif prefix == "f" and len(parts) >= 4:
         # f:<format_id>:<draft_token>:<revision>

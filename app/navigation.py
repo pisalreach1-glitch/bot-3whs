@@ -93,4 +93,8 @@ class NavigationManager:
         state.selected_script_id = script_id
         state.selected_script_version = version
 
+    def clear(self):
+        """Clears all in-memory navigation states."""
+        self._states.clear()
+
 navigation = NavigationManager()

@@ -45,24 +45,45 @@ async def safe_reply(target, text: str, reply_markup=None):
             except Exception as e:
                 logger.error(f"Failed to safe_reply: {e}")
 
-async def safe_edit(status_msg, text: str, reply_markup=None):
-    """Edits status message with first chunk, and replies with any subsequent chunks."""
+async def safe_edit(target, text: str, reply_markup=None):
+    """Edits status message or callback query with first chunk, and replies with any subsequent chunks."""
     chunks = split_message(text)
     first_markup = reply_markup if len(chunks) == 1 else None
-    try:
-        await status_msg.edit_text(chunks[0], parse_mode="Markdown", reply_markup=first_markup)
-    except Exception:
-        try:
-            await status_msg.edit_text(chunks[0], reply_markup=first_markup)
-        except Exception as e:
-            logger.error(f"Failed to edit status message: {e}")
 
-    for i, chunk in enumerate(chunks[1:], start=1):
-        markup = reply_markup if i == len(chunks) - 1 else None
+    edit_fn = None
+    reply_target = None
+
+    if hasattr(target, "edit_text"):
+        # Message
+        edit_fn = target.edit_text
+        reply_target = target
+    elif hasattr(target, "edit_message_text"):
+        # CallbackQuery
+        edit_fn = target.edit_message_text
+        reply_target = getattr(target, "message", None)
+    else:
+        reply_target = target
+
+    if edit_fn:
         try:
-            await status_msg.reply_text(chunk, parse_mode="Markdown", reply_markup=markup)
+            await edit_fn(chunks[0], parse_mode="Markdown", reply_markup=first_markup)
         except Exception:
             try:
-                await status_msg.reply_text(chunk, reply_markup=markup)
+                await edit_fn(chunks[0], reply_markup=first_markup)
             except Exception as e:
-                logger.error(f"Failed to reply subsequent chunk: {e}")
+                logger.error(f"Failed to edit message: {e}")
+                if reply_target and hasattr(reply_target, "reply_text"):
+                    await safe_reply(reply_target, chunks[0], reply_markup=first_markup)
+    elif reply_target:
+        await safe_reply(reply_target, chunks[0], reply_markup=first_markup)
+
+    if reply_target and hasattr(reply_target, "reply_text"):
+        for i, chunk in enumerate(chunks[1:], start=1):
+            markup = reply_markup if i == len(chunks) - 1 else None
+            try:
+                await reply_target.reply_text(chunk, parse_mode="Markdown", reply_markup=markup)
+            except Exception:
+                try:
+                    await reply_target.reply_text(chunk, reply_markup=markup)
+                except Exception as e:
+                    logger.error(f"Failed to reply subsequent chunk: {e}")

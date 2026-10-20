@@ -60,7 +60,7 @@ async def execute_generation_request(
     if not topic:
         err_msg = "⚠️ សូមបញ្ចូលប្រធានបទមាតិកាជាមុនសិន។"
         storage.save_failed_request(request.owner, request, ErrorCodes.INVALID_INPUT, err_msg)
-        return GenerationResult(success=False, error_code=ErrorCodes.INVALID_INPUT, user_message_km=err_msg)
+        return GenerationResult(success=False, error_code=ErrorCodes.INVALID_INPUT, user_message_km=err_msg, request_id=request.id)
 
     # 1. Build prompt based on format
     if format_id == "comedy" or request.operation == "comedy" or draft.get("comedy_style"):
@@ -93,7 +93,7 @@ async def execute_generation_request(
     # Check for cancellation before processing result
     if not task_mgr.is_current_request(request.owner, token):
         logger.info(f"Request {request.id} was cancelled before plan validation")
-        return GenerationResult(success=False, error_code=ErrorCodes.CANCELLED, user_message_km="សំណើត្រូវបានបោះបង់")
+        return GenerationResult(success=False, error_code=ErrorCodes.CANCELLED, user_message_km="សំណើត្រូវបានបោះបង់", request_id=request.id)
 
     # 3. Check for API / Quota / Timeout error
     if ai._is_error_response(raw_response):
@@ -101,7 +101,7 @@ async def execute_generation_request(
             ErrorCodes.TIMEOUT if "timeout" in raw_response.lower() else ErrorCodes.INTERNAL_ERROR
         )
         storage.save_failed_request(request.owner, request, err_code, raw_response)
-        return GenerationResult(success=False, error_code=err_code, user_message_km=raw_response)
+        return GenerationResult(success=False, error_code=err_code, user_message_km=raw_response, request_id=request.id)
 
     # 4. Strict Plan and Timeline Validation
     plan_result = validate_and_build_plan(raw_response, target_s, request.pace_units_per_second)
@@ -109,12 +109,12 @@ async def execute_generation_request(
         err_msg = plan_result.formatted_text
         err_code = ErrorCodes.INVALID_TIMELINE if "Overlap" in (plan_result.error_message or "") or "Gap" in (plan_result.error_message or "") else ErrorCodes.INVALID_SCHEMA
         storage.save_failed_request(request.owner, request, err_code, err_msg)
-        return GenerationResult(success=False, error_code=err_code, user_message_km=err_msg)
+        return GenerationResult(success=False, error_code=err_code, user_message_km=err_msg, request_id=request.id)
 
     # 5. Coordinated check before atomic save to prevent check-then-save race
     if not task_mgr.is_current_request(request.owner, token):
         logger.info(f"Request {request.id} was cancelled during plan validation; suppressing save")
-        return GenerationResult(success=False, error_code=ErrorCodes.CANCELLED, user_message_km="សំណើត្រូវបានបោះបង់")
+        return GenerationResult(success=False, error_code=ErrorCodes.CANCELLED, user_message_km="សំណើត្រូវបានបោះបង់", request_id=request.id)
 
     # 6. Save successful script atomically
     script_id = request.source_script_id or request.id
@@ -137,4 +137,5 @@ async def execute_generation_request(
         success=True,
         script=saved_script,
         user_message_km=plan_result.formatted_text,
+        request_id=request.id,
     )

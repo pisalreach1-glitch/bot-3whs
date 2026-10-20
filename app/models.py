@@ -102,6 +102,7 @@ class Draft:
     actor_count: Optional[int] = None
     evidence_ids: List[str] = field(default_factory=list)
     current_step: str = "format"
+    owner: Optional[UserKey] = None
 
     def to_snapshot(self) -> dict:
         return self.to_dict()
@@ -118,10 +119,13 @@ class Draft:
             "actor_count": self.actor_count,
             "evidence_ids": list(self.evidence_ids),
             "current_step": self.current_step,
+            "owner": self.owner.key_str if self.owner else None,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "Draft":
+        owner_val = d.get("owner")
+        owner = UserKey.from_str(owner_val) if isinstance(owner_val, str) else None
         return cls(
             id=str(d["id"]),
             revision=int(d.get("revision", 1)),
@@ -133,6 +137,7 @@ class Draft:
             actor_count=int(d["actor_count"]) if d.get("actor_count") is not None else None,
             evidence_ids=list(d.get("evidence_ids", [])),
             current_step=str(d.get("current_step", "format")),
+            owner=owner,
         )
 
 @dataclass
@@ -278,6 +283,7 @@ class GenerationResult:
     script: Optional[SavedScript] = None
     error_code: Optional[str] = None
     user_message_km: str = ""
+    request_id: Optional[str] = None
 
 @dataclass
 class Idea:
