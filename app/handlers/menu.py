@@ -22,6 +22,7 @@ from app.keyboards import (
     get_comedy_actors_keyboard,
     get_back_home_keyboard,
     get_draft_duration_keyboard,
+    get_ideas_categories_keyboard,
 )
 from app.views import (
     render_welcome,
@@ -33,6 +34,7 @@ from app.views import (
     render_review,
     render_help,
     render_topic_prompt,
+    render_ideas_category_selection,
 )
 from app.handlers.commands import get_user_key
 from app.telegram_io import safe_edit
@@ -271,11 +273,32 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             draft_id=draft.id,
         )
 
-    # ── MENU: IDEAS ───────────────────────────
+    # ── MENU: IDEAS CATEGORY PICKER ───────────
     elif action == "ideas":
+        navigation.go_to(user_key, Screens.IDEA_CATEGORY)
         saved_niche = storage.get_user_niche(user_key)
+        msg = render_ideas_category_selection(saved_niche)
+        keyboard = get_ideas_categories_keyboard(saved_niche)
+        await safe_edit(query, msg, reply_markup=keyboard)
+        return
+
+    # ── MENU: IDEAS CATEGORY SELECTED ─────────
+    elif action.startswith("ideacat:"):
+        cat_key = action.split(":", 1)[1]
+        saved_niche = storage.get_user_niche(user_key)
+        cat_map = {
+            "cambodia": "🇰🇭 ព័ត៌មាន និងសង្គមកម្ពុជាថ្មីៗ",
+            "food": "🍜 ម្ហូបអាហារ និងជីវិតខ្មែរ",
+            "business": "🛍 អាជីវកម្ម និងការលក់អនឡាញនៅខ្មែរ",
+            "education": "📚 ការអប់រំ និងការងារ/ជំនាញនៅកម្ពុជា",
+            "tech": "📱 បច្ចេកវិទ្យា និង AI ពេញនិយមនៅកម្ពុជា",
+            "selfdev": "🌱 ការអភិវឌ្ឍខ្លួន និងផ្នត់គំនិត",
+            "current": saved_niche or "ទូទៅ",
+        }
+        chosen_category = cat_map.get(cat_key, saved_niche or "ទូទៅ")
         from app.handlers.ideas import start_ideas_flow
-        await start_ideas_flow(update, context, category=saved_niche or "ទូទៅ")
+        await start_ideas_flow(update, context, category=chosen_category)
+        return
 
     # ── MENU: LAST SCRIPT ─────────────────────
     elif action == "last":
@@ -504,6 +527,12 @@ async def render_current_screen(query, user_key: UserKey, screen: str, state, st
             return await render_current_screen(query, user_key, Screens.HOME, state, storage)
         msg = render_script_summary(script, settings["pace"])
         keyboard = get_script_actions_keyboard(script)
+        await safe_edit(query, msg, reply_markup=keyboard)
+
+    elif screen == Screens.IDEA_CATEGORY:
+        saved_niche = storage.get_user_niche(user_key)
+        msg = render_ideas_category_selection(saved_niche)
+        keyboard = get_ideas_categories_keyboard(saved_niche)
         await safe_edit(query, msg, reply_markup=keyboard)
 
     elif screen == Screens.SETTINGS:

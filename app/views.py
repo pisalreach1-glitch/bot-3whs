@@ -330,9 +330,21 @@ def render_hook_options(script: SavedScript, hooks: List[dict]) -> str:
     lines.append("👉 _ជ្រើសរើសប៊ូតុងខាងក្រោមដើម្បីអនុវត្ត Hook ថ្មីជំនួសប្លង់ទី ១ ក្នុង Script របស់អ្នក!_")
     return "\n".join(lines)
 
+def render_ideas_category_selection(saved_niche: Optional[str] = None) -> str:
+    lines = [
+        "💡 *ស្វែងរកគំនិតមាតិកាវីដេអូថ្មីៗ (Cambodia Content Ideas)*",
+        "━━━━━━━━━━━━━━━━━━━━━",
+        "🇰🇭 *ផ្តោតលើទីផ្សារ សង្គម និងទស្សនិកជនក្នុងស្រុកខ្មែរ ១០០%*",
+        "",
+        "សូមជ្រើសរើសវិស័យ ឬប្រធានបទដែលអ្នកចង់ឱ្យ AI ស្រង់គំនិតមាតិកាថ្មីៗ៖",
+    ]
+    if saved_niche and saved_niche not in ("ទូទៅ", ""):
+        lines.append(f"\n🎯 _វិស័យបច្ចុប្បន្នរបស់អ្នក៖_ `{saved_niche}`")
+    return "\n".join(lines)
+
 def render_ideas_batch(ideas: List[Idea], evidence: List[EvidenceRecord], category: str) -> str:
     lines = [
-        f"💡 *គំនិតមាតិកាវីដេអូ — វិស័យ {category}*",
+        f"💡 *គំនិតមាតិកាវីដេអូសម្រាប់ស្រុកខ្មែរ 🇰🇭 — {category}*",
         "━━━━━━━━━━━━━━━━━━━━━\n",
     ]
     for i in ideas:
@@ -346,14 +358,14 @@ def render_ideas_batch(ideas: List[Idea], evidence: List[EvidenceRecord], catego
 
     if evidence:
         lines.append("━━━━━━━━━━━━━━━━━━━━━")
-        lines.append("🔗 **ប្រភពព័ត៌មានថ្មីៗដែលបានយោង (Verified Sources):**")
+        lines.append("🔗 **ប្រភពព័ត៌មានថ្មីៗនៅកម្ពុជា (Verified Cambodia Sources):**")
         for ev in evidence:
             pub_date = ev.published_at.strftime("%d/%m/%Y") if ev.published_at else "ថ្មីៗ"
             lines.append(f"• [{ev.id}] [{ev.publisher}: {ev.title}]({ev.url}) — _{pub_date}_")
-        lines.append("\n💡 _(ផ្អែកលើព័ត៌មានសាធារណៈក្នុងរយៈពេល ៤៨ ម៉ោងចុងក្រោយ មិនមែនទិន្នន័យ Trend TikTok/FB ឡើយ)_")
+        lines.append("\n💡 _(ផ្អែកលើព័ត៌មានសាធារណៈនៅកម្ពុជាក្នុងរយៈពេល ៤៨-៧២ ម៉ោងចុងក្រោយ)_")
     else:
         lines.append("━━━━━━━━━━━━━━━━━━━━━")
-        lines.append("ℹ️ _(គំនិតទូទៅពី AI — មិនបានផ្ទៀងផ្ទាត់ជាមួយព័ត៌មានថ្មីៗ)_")
+        lines.append("ℹ️ _(គំនិតទូទៅពី AI — ផ្តោតលើបរិបទជីវភាពរស់នៅ និងទីផ្សារក្នុងស្រុកខ្មែរ)_")
 
     lines.append("\n👉 _ចុចប៊ូតុង «①/②/③ យកគំនិត...» ខាងក្រោមដើម្បីយកប្រធានបទទៅបង្កើត Script!_")
     return "\n".join(lines)

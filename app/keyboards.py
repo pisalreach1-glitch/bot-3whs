@@ -2,6 +2,7 @@
 app/keyboards.py - All Telegram Inline Keyboards using compact callback data.
 """
 
+from typing import Optional
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.callbacks import (
     encode_menu,
@@ -330,3 +331,30 @@ def get_back_home_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🏠 Menu", callback_data=encode_nav("home")),
         ]
     ])
+
+def get_ideas_categories_keyboard(saved_niche: Optional[str] = None) -> InlineKeyboardMarkup:
+    """Category picker for 100% Cambodia-focused content ideas."""
+    keyboard = [
+        [
+            InlineKeyboardButton("🇰🇭 ព័ត៌មាន & សង្គមខ្មែរ", callback_data=encode_menu("ideacat:cambodia")),
+            InlineKeyboardButton("🍜 ម្ហូបអាហារ & ជីវិតខ្មែរ", callback_data=encode_menu("ideacat:food")),
+        ],
+        [
+            InlineKeyboardButton("🛍 អាជីវកម្ម & លក់អនឡាញ", callback_data=encode_menu("ideacat:business")),
+            InlineKeyboardButton("📚 ការអប់រំ & ការងារ/ជំនាញ", callback_data=encode_menu("ideacat:education")),
+        ],
+        [
+            InlineKeyboardButton("📱 បច្ចេកវិទ្យា & AI", callback_data=encode_menu("ideacat:tech")),
+            InlineKeyboardButton("🌱 ការអភិវឌ្ឍខ្លួន & ផ្នត់គំនិត", callback_data=encode_menu("ideacat:selfdev")),
+        ],
+    ]
+    if saved_niche and saved_niche not in ("ទូទៅ", ""):
+        keyboard.append([
+            InlineKeyboardButton(f"🎯 វិស័យបច្ចុប្បន្ន ({saved_niche})", callback_data=encode_menu("ideacat:current"))
+        ])
+    keyboard.append([
+        InlineKeyboardButton("⬅️ ត្រឡប់ក្រោយ", callback_data=encode_nav("home")),
+        InlineKeyboardButton("🏠 Menu", callback_data=encode_nav("home")),
+    ])
+    return InlineKeyboardMarkup(keyboard)
+

@@ -35,31 +35,21 @@ class NewsItem:
     published_at: Optional[datetime] = None
     is_recent: bool = False
 
-# Verified publicly accessible RSS feeds (zero API keys required)
+# Verified publicly accessible RSS feeds focusing strictly on Cambodia (zero API keys required)
 CONFIGURED_FEEDS = [
     {
-        "publisher": "BBC News (Asia)",
-        "url": "https://feeds.bbci.co.uk/news/world/asia/rss.xml",
-        "category": "general",
-    },
-    {
         "publisher": "Google News (Cambodia)",
-        "url": "https://news.google.com/rss/search?q=Cambodia+when:2d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=Cambodia+when:3d&hl=en-US&gl=KH&ceid=KH:en",
         "category": "general",
     },
     {
-        "publisher": "Al Jazeera (World)",
-        "url": "https://www.aljazeera.com/xml/rss/all.xml",
-        "category": "general",
-    },
-    {
-        "publisher": "Google News (Business)",
-        "url": "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=en-US&gl=US&ceid=US:en",
+        "publisher": "Google News (Cambodia Business)",
+        "url": "https://news.google.com/rss/search?q=Cambodia+business+economy+when:3d&hl=en-US&gl=KH&ceid=KH:en",
         "category": "business",
     },
     {
-        "publisher": "Google News (Technology)",
-        "url": "https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=en-US&gl=US&ceid=US:en",
+        "publisher": "Google News (Cambodia Technology)",
+        "url": "https://news.google.com/rss/search?q=Cambodia+technology+OR+digital+when:3d&hl=en-US&gl=KH&ceid=KH:en",
         "category": "tech",
     },
 ]
