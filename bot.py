@@ -386,7 +386,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "🔹 /start — បង្ហាញ Menu ទម្រង់ Content ទាំង ៦\n"
         "🔹 /cancel — បោះបង់សំណើដែលកំពុងធ្វើ ហើយត្រឡប់ទៅ Menu\n"
-        "🔹 /ideas — បង្កើតគំនិតមាតិកា Viral ថ្មីៗ\n"
+        "🔹 /ideas [វិស័យ] — គំនិតមាតិកាផ្អែកលើព័ត៌មានថ្មីៗ (ឬ /ideas ធម្មតា)\n"
         "🔹 /status — ពិនិត្យស្ថានភាពប្រព័ន្ធ និង API\n"
         "🔹 /subscribe — ទទួលគំនិតមាតិការៀងរាល់ព្រឹក\n"
         "🔹 /unsubscribe — បិទការទទួលសារប្រចាំព្រឹក\n\n"
@@ -401,10 +401,11 @@ async def ideas_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("is_processing"):
         await safe_reply(target, "⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!")
         return
-    status_msg = await target.reply_text("💡 *កំពុងបង្កើតគំនិតមាតិកា Viral ថ្មីៗ...*")
+    category = " ".join(context.args).strip() if (context.args and len(context.args) > 0) else "ទូទៅ"
+    status_msg = await target.reply_text("💡 *កំពុងស្វែងរកព័ត៌មានថ្មីៗ និងរៀបចំគំនិតមាតិកា...*")
     try:
         context.user_data["is_processing"] = True
-        response = await ai_service.generate_daily_ideas("មាតិកាទូទៅ និងអាជីវកម្ម")
+        response = await ai_service.generate_daily_ideas(category)
         await safe_edit(status_msg, response)
         await target.reply_text(
             "✅ *គំនិតខាងលើ!* តើអ្នកចង់ជ្រើស Format ណាមួយដើម្បីបង្កើត Script?",
@@ -515,11 +516,11 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         if context.user_data.get("is_processing"):
             await query.answer("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!", show_alert=True)
             return
-        await query.answer("💡 កំពុងបង្កើតគំនិត...")
-        status_msg = await query.message.reply_text("💡 *កំពុងបង្កើតគំនិតមាតិកា Viral ថ្មីៗ...*")
+        await query.answer("💡 កំពុងរៀបចំគំនិត...")
+        status_msg = await query.message.reply_text("💡 *កំពុងស្វែងរកព័ត៌មានថ្មីៗ និងរៀបចំគំនិតមាតិកា...*")
         try:
             context.user_data["is_processing"] = True
-            response = await ai_service.generate_daily_ideas("មាតិកាទូទៅ និងអាជីវកម្ម")
+            response = await ai_service.generate_daily_ideas("ទូទៅ")
             await safe_edit(status_msg, response)
             await query.message.reply_text(
                 "✅ *គំនិតខាងលើ!* ចង់ជ្រើស Format ណាមួយដើម្បីផលិត Script?",
@@ -731,13 +732,13 @@ async def send_daily_content(context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         # Generate ideas ONCE for all subscribers to save Quota
-        content = await ai_service.generate_daily_ideas("មាតិកាទូទៅ និងអាជីវកម្ម")
+        content = await ai_service.generate_daily_ideas("ទូទៅ")
         if is_error_response(content):
             logger.warning("Daily broadcast generated an error response, aborting broadcast.")
             return
 
         msg = (
-            "☀️ *អរុណសួស្តី! គំនិតមាតិកា Viral ថ្ងៃនេះ* 💡\n"
+            "☀️ *អរុណសួស្តី! គំនិតមាតិកាប្រចាំថ្ងៃ* 💡\n"
             "━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"{content}\n\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
