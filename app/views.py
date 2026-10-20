@@ -176,6 +176,22 @@ def render_review(draft: Draft, pace: float) -> str:
     ])
     return "\n".join(lines)
 
+def _get_scene_phase_label(sc: Scene, total_scenes: int, target_seconds: int) -> str:
+    """Helper to detect and display the 3WHs formula phase for a scene."""
+    combined = f"{sc.on_screen_text_km} {sc.visual_action} {sc.editing_note}".upper()
+    if "HOOK" in combined or "[🎯" in combined or sc.start_seconds == 0 or sc.scene_number == 1:
+        return "🎯 HOOK"
+    elif "CTA" in combined or "[📣" in combined or sc.end_seconds >= target_seconds or sc.scene_number == total_scenes:
+        return "📣 CTA"
+    elif "WHAT" in combined or "[📌" in combined or sc.scene_number == 2:
+        return "📌 WHAT"
+    elif "WHY" in combined or "[🔥" in combined or sc.scene_number == 3:
+        return "🔥 WHY"
+    elif "WHO" in combined or "[👥" in combined or (sc.scene_number == 4 and total_scenes >= 5):
+        return "👥 WHO"
+    else:
+        return "🛠️ HOW"
+
 def render_script_summary(script: SavedScript, pace: float) -> str:
     plan = script.plan
     dur_label = f"{plan.target_duration_seconds} វិនាទី" if plan.target_duration_seconds < 60 else f"{plan.target_duration_seconds // 60} នាទី ({plan.target_duration_seconds} វិនាទី)"
@@ -193,13 +209,20 @@ def render_script_summary(script: SavedScript, pace: float) -> str:
         f"_(ផ្អែកលើ {pace:.1f} តួអក្សរ/s)_"
     )
 
+    if plan.hook:
+        clean_hook = plan.hook.replace("_", "\\_").replace("*", "\\*")
+        lines.append(f"🎯 *Hook (៣ វិនាទីដំបូង)*: \"{clean_hook}\"")
+    if plan.cta:
+        clean_cta = plan.cta.replace("_", "\\_").replace("*", "\\*")
+        lines.append(f"📣 *CTA (ពាក្យបិទបញ្ចប់)*: \"{clean_cta}\"")
+
     if plan.validation_notes:
         for n in plan.validation_notes:
             lines.append(f"ℹ️ _{n}_")
 
     lines.extend([
         "━━━━━━━━━━━━━━━━━━━━━",
-        f"🎬 *ចំនួនប្លង់សរុប*: {len(plan.scenes)} ប្លង់",
+        f"🎬 *ចំនួនប្លង់សរុប*: {len(plan.scenes)} ប្លង់ (តាមរូបមន្ត 3WHs)",
         "",
         "💡 _ជ្រើសរើសប៊ូតុងខាងក្រោមដើម្បីមើល៖_",
         "• «📖 ពាក្យនិយាយ» — អត្ថបទសម្រាប់អាននិយាយ",
@@ -220,8 +243,9 @@ def render_script_read(script: SavedScript) -> str:
         start_str = format_timestamp(sc.start_seconds)
         end_str = format_timestamp(sc.end_seconds)
         dur = sc.end_seconds - sc.start_seconds
+        phase = _get_scene_phase_label(sc, len(plan.scenes), plan.target_duration_seconds)
 
-        lines.append(f"⏱️ *[{start_str}–{end_str}] ({dur}s)* — ប្លង់ទី {sc.scene_number}")
+        lines.append(f"⏱️ *[{start_str}–{end_str}] ({dur}s)* — ប្លង់ទី {sc.scene_number} `[{phase}]`")
         if sc.spoken_text_km and sc.spoken_text_km.strip():
             lines.append(f"🗣️ \"{sc.spoken_text_km}\"")
         else:
@@ -244,8 +268,9 @@ def render_script_shots(script: SavedScript, pace: float) -> str:
         start_str = format_timestamp(sc.start_seconds)
         end_str = format_timestamp(sc.end_seconds)
         dur = max(0, sc.end_seconds - sc.start_seconds)
+        phase = _get_scene_phase_label(sc, len(plan.scenes), plan.target_duration_seconds)
 
-        lines.append(f"🎬 *ប្លង់ទី {sc.scene_number} | {start_str}–{end_str}* ({dur}s)")
+        lines.append(f"🎬 *ប្លង់ទី {sc.scene_number} `[{phase}]` | {start_str}–{end_str}* ({dur}s)")
         if sc.spoken_text_km and sc.spoken_text_km.strip():
             lines.append(f"🗣️ *ពាក្យនិយាយ*: \"{sc.spoken_text_km}\"")
             if sc.is_dialogue_too_long:

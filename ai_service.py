@@ -111,11 +111,24 @@ class AIService:
             if is_json:
                 config_kwargs["response_mime_type"] = "application/json"
             
-            response = await self.client.aio.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(**config_kwargs)
-            )
+            try:
+                response = await self.client.aio.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(**config_kwargs)
+                )
+            except Exception as e:
+                # If thinking_config was invalid for this model, retry without it
+                if "INVALID_ARGUMENT" in str(e) and "thinking_config" in config_kwargs:
+                    config_kwargs.pop("thinking_config", None)
+                    response = await self.client.aio.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(**config_kwargs)
+                    )
+                else:
+                    raise
+
             if response and response.text:
                 return response.text
             raise ValueError(f"Empty response text from {model_name}")
@@ -141,7 +154,7 @@ class AIService:
     async def generate_response(self, prompt: str, is_json: bool = False) -> str:
         """
         Generates response using native async SDK with bounded concurrency and transport timeout.
-        Does not continue through fallback models if timeout or cancellation occurs.
+        Retries on transient 503 spikes, falls through exhausted models, and preserves quota.
         """
         if not self.is_configured():
             self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
@@ -151,45 +164,55 @@ class AIService:
                 return "⚠️ សូមបញ្ចូល `GEMINI_API_KEY` នៅក្នុង file `.env` ជាមុនសិន!"
 
         models_to_try = [
-            "gemini-2.5-flash",
+            "gemini-3.5-flash",
             "gemini-flash-latest",
-            "gemini-2.5-flash-lite",
-            "gemini-3.8-flash",
+            "gemini-2.5-flash",
         ]
 
         async with _API_SEMAPHORE:
             errors = []
+            has_quota_error = False
             for model_name in models_to_try:
-                try:
-                    text = await asyncio.wait_for(
-                        self._generate_with_model(model_name, prompt, is_json),
-                        timeout=REQUEST_TIMEOUT_SECONDS
-                    )
-                    self.last_api_status = "🟢 ដំណើរការល្អ (Online)"
-                    return text
-                except asyncio.CancelledError:
-                    logger.info(f"API request was cancelled during {model_name}")
-                    raise
-                except asyncio.TimeoutError:
-                    logger.warning(f"Timeout on model {model_name}. Halting fallback to save quota.")
-                    self.last_api_status = "⚠️ Request Timeout"
-                    return (
-                        "⚠️ **សំណើចំណាយពេលយូរពេក (Request Timeout)**\n\n"
-                        "ប្រព័ន្ធ AI មិនបានឆ្លើយតបទាន់ពេលវេលាឡើយ។\n"
-                        "សូមចុច [🔁 បង្កើតម្ដងទៀត] ដើម្បីសាកល្បងឡើងវិញ។"
-                    )
-                except Exception as e:
-                    err_str = str(e)
-                    logger.warning(f"Model {model_name} failed: {err_str}")
-                    errors.append(f"{model_name}: {err_str}")
-                    if "429" in err_str.lower() or "quota" in err_str.lower() or "exhausted" in err_str.lower():
-                        self.last_api_status = "⚠️ Quota Limit"
-                        return (
-                            "⚠️ **ប្រព័ន្ធ AI ទទួលសំណើច្រើន ឬដល់កម្រិតកំណត់បណ្ដោះអាសន្ន (Quota Limit)**\n\n"
-                            "Google Gemini Free Tier កំពុងរង់ចាំ Reset សំណើបន្តិច។\n"
-                            "👉 សូមរង់ចាំមួយស្របក់ រួចចុចប៊ូតុង **[🔁 បង្កើតម្ដងទៀត]** នោះវានឹងដំណើរការវិញជាធម្មតា!"
+                # Up to 2 attempts per model for transient 503 spikes
+                for attempt in range(2):
+                    try:
+                        text = await asyncio.wait_for(
+                            self._generate_with_model(model_name, prompt, is_json),
+                            timeout=REQUEST_TIMEOUT_SECONDS
                         )
-                    continue
+                        self.last_api_status = "🟢 ដំណើរការល្អ (Online)"
+                        return text
+                    except asyncio.CancelledError:
+                        logger.info(f"API request was cancelled during {model_name}")
+                        raise
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Timeout on model {model_name}. Halting fallback to save quota.")
+                        self.last_api_status = "⚠️ Request Timeout"
+                        return (
+                            "⚠️ **សំណើចំណាយពេលយូរពេក (Request Timeout)**\n\n"
+                            "ប្រព័ន្ធ AI មិនបានឆ្លើយតបទាន់ពេលវេលាឡើយ។\n"
+                            "សូមចុច [🔁 បង្កើតម្ដងទៀត] ដើម្បីសាកល្បងឡើងវិញ។"
+                        )
+                    except Exception as e:
+                        err_str = str(e)
+                        logger.warning(f"Model {model_name} (attempt {attempt+1}) failed: {err_str}")
+                        errors.append(f"{model_name}: {err_str}")
+                        if "429" in err_str.lower() or "quota" in err_str.lower() or "exhausted" in err_str.lower():
+                            has_quota_error = True
+                            break  # Move to next model immediately
+                        if "503" in err_str or "unavailable" in err_str.lower():
+                            if attempt == 0:
+                                await asyncio.sleep(1.2)
+                                continue
+                        break
+
+            if has_quota_error and not any("503" in e for e in errors):
+                self.last_api_status = "⚠️ Quota Limit"
+                return (
+                    "⚠️ **ប្រព័ន្ធ AI ទទួលសំណើច្រើន ឬដល់កម្រិតកំណត់បណ្ដោះអាសន្ន (Quota Limit)**\n\n"
+                    "Google Gemini Free Tier កំពុងរង់ចាំ Reset សំណើបន្តិច។\n"
+                    "👉 សូមរង់ចាំមួយស្របក់ រួចចុចប៊ូតុង **[🔁 បង្កើតម្ដងទៀត]** នោះវានឹងដំណើរការវិញជាធម្មតា!"
+                )
 
             self.last_api_status = f"🔴 Error: {errors[-1][:50] if errors else 'Unknown'}"
             return (
