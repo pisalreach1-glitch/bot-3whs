@@ -22,27 +22,18 @@ def get_user_key(update: Update) -> UserKey:
     return UserKey(chat_id=chat_id, user_id=user_id)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Resets screen, cancels any pending generation. If first visit, shows niche selection; otherwise shows main menu."""
+    """Resets screen, cancels any pending generation, and displays the main welcome menu."""
     user_key = get_user_key(update)
     storage = context.bot_data["storage"]
     task_mgr = context.bot_data["task_mgr"]
 
     await task_mgr.cancel_request(user_key)
-    saved_niche = storage.get_user_niche(user_key)
+    navigation.go_home(user_key)
+    settings = storage.get_settings(user_key)
+    msg = render_welcome(settings["duration"])
+    keyboard = get_main_menu_keyboard()
+
     target = update.message or (update.callback_query.message if update.callback_query else None)
-
-    if not saved_niche:
-        navigation.go_to(user_key, Screens.NICHE_SELECTION)
-        from app.views import render_niche_selection
-        from app.keyboards import get_niche_selection_keyboard
-        msg = render_niche_selection()
-        keyboard = get_niche_selection_keyboard()
-    else:
-        navigation.go_home(user_key)
-        settings = storage.get_settings(user_key)
-        msg = render_welcome(settings["duration"])
-        keyboard = get_main_menu_keyboard()
-
     if update.callback_query:
         await safe_edit(update.callback_query, msg, reply_markup=keyboard)
     elif target:
