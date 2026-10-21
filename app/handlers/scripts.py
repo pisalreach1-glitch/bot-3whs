@@ -24,6 +24,7 @@ from app.keyboards import (
 )
 from app.views import (
     render_script_summary,
+    render_script_full,
     render_script_read,
     render_script_shots,
     render_script_caption,
@@ -69,7 +70,13 @@ async def handle_script_action_callback(update: Update, context: ContextTypes.DE
     pace = script.request_snapshot.pace_units_per_second or settings["pace"]
 
     # ── ZERO AI CALL VIEWS ────────────────────
-    if action == "read":
+    if action == "full":
+        await query.answer("📜 Script ពេញលេញ")
+        navigation.go_to(user_key, Screens.SCRIPT_FULL, script_id=script_id, script_version=version)
+        msg = render_script_full(script, pace)
+        await safe_edit(query, msg, reply_markup=get_script_actions_keyboard(script))
+
+    elif action == "read":
         await query.answer("📖 ប្លង់ពាក្យនិយាយ")
         navigation.go_to(user_key, Screens.SCRIPT_READ, script_id=script_id, script_version=version)
         msg = render_script_read(script)

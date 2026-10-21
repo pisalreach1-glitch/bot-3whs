@@ -232,6 +232,83 @@ class TestComedyAndScriptFlows(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    def test_script_full_view_callback(self):
+        async def run_test():
+            from app.models import SavedScript, GenerationRequest
+            from script_models import ScriptPlan, Scene
+            from app.handlers.scripts import handle_script_action_callback
+
+            plan = ScriptPlan(
+                title="Khmer Coffee Secrets",
+                target_audience="Coffee lovers",
+                hook="តើអ្នកដឹងទេថាកាហ្វេបុរាណឆ្ងាញ់យ៉ាងណា?",
+                caption="អាថ៌កំបាំងកាហ្វេខ្មែរ!",
+                hashtags=["#Coffee", "#Khmer"],
+                cta="ចុច Follow ដើម្បីរៀនបន្ថែម!",
+                target_duration_seconds=60,
+                estimated_speaking_seconds=50.0,
+                scenes=[
+                    Scene(
+                        scene_number=1,
+                        start_seconds=0,
+                        end_seconds=15,
+                        spoken_text_km="កាហ្វេពេលព្រឹកធ្វើឱ្យអារម្មណ៍ស្រស់ស្រាយ",
+                        shot_size="Close-up",
+                        camera_action="Slow zoom in",
+                        visual_action="Pouring hot coffee into glass",
+                        on_screen_text_km="កាហ្វេខ្មែរ",
+                        editing_note="Cinematic color grade",
+                        audio_note="Sound of pouring liquid",
+                    )
+                ],
+            )
+            from datetime import datetime, timezone
+            script = SavedScript(
+                id="script_full_test",
+                version=1,
+                owner=self.user,
+                request_snapshot=GenerationRequest(
+                    id="req_full_1",
+                    operation="create",
+                    owner=self.user,
+                    draft_snapshot={},
+                    pace_units_per_second=2.5,
+                ),
+                plan=plan,
+                created_at=datetime.now(timezone.utc),
+            )
+            self.storage.save_successful_script(script)
+
+            update = MagicMock()
+            update.effective_chat.id = self.user.chat_id
+            update.effective_user.id = self.user.user_id
+            update.callback_query.data = "s:script_full_test:1:full"
+            update.callback_query.answer = AsyncMock()
+            update.callback_query.edit_message_text = AsyncMock()
+            update.callback_query.message = MagicMock()
+
+            context = MagicMock()
+            context.bot_data = {
+                "storage": self.storage,
+                "task_mgr": self.task_mgr,
+                "ai": MagicMock(),
+            }
+
+            await handle_script_action_callback(update, context)
+
+            state = navigation.get_state(self.user)
+            self.assertEqual(state.current_screen, Screens.SCRIPT_FULL)
+            self.assertTrue(update.callback_query.edit_message_text.called)
+            args, kwargs = update.callback_query.edit_message_text.call_args
+            rendered_content = args[0]
+            self.assertIn("SCRIPT ពេញលេញ", rendered_content)
+            self.assertIn("Khmer Coffee Secrets", rendered_content)
+            self.assertIn("កាហ្វេពេលព្រឹកធ្វើឱ្យអារម្មណ៍ស្រស់ស្រាយ", rendered_content)
+            self.assertIn("អាថ៌កំបាំងកាហ្វេខ្មែរ!", rendered_content)
+            self.assertIn("#Coffee", rendered_content)
+
+        asyncio.run(run_test())
+
 
 if __name__ == "__main__":
     unittest.main()

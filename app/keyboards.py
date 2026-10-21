@@ -165,6 +165,9 @@ def get_script_actions_keyboard(script: SavedScript) -> InlineKeyboardMarkup:
     ver = script.version
     keyboard = [
         [
+            InlineKeyboardButton("📜 Script ពេញលេញ", callback_data=encode_script_action(sid, ver, "full")),
+        ],
+        [
             InlineKeyboardButton("📖 ពាក្យនិយាយ", callback_data=encode_script_action(sid, ver, "read")),
             InlineKeyboardButton("🎥 ប្លង់ថត", callback_data=encode_script_action(sid, ver, "shots")),
             InlineKeyboardButton("📝 Caption", callback_data=encode_script_action(sid, ver, "caption")),

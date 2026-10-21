@@ -225,10 +225,78 @@ def render_script_summary(script: SavedScript, pace: float) -> str:
         f"🎬 *ចំនួនប្លង់សរុប*: {len(plan.scenes)} ប្លង់ (តាមរូបមន្ត 3WHs)",
         "",
         "💡 _ជ្រើសរើសប៊ូតុងខាងក្រោមដើម្បីមើល៖_",
+        "• «📜 Script ពេញលេញ» — ខ្លឹមសារ Script ទាំងមូល (ងាយស្រួល Copy)",
         "• «📖 ពាក្យនិយាយ» — អត្ថបទសម្រាប់អាននិយាយ",
         "• «🎥 ប្លង់ថត» — ផែនការកាមេរ៉ា និងសកម្មភាពលម្អិត",
         "• «📝 Caption» — Caption, Hashtags & CTA សម្រាប់ផុស",
     ])
+    return "\n".join(lines)
+
+def render_script_full(script: SavedScript, pace: float) -> str:
+    plan = script.plan
+    dur_label = f"{plan.target_duration_seconds} វិនាទី" if plan.target_duration_seconds < 60 else f"{plan.target_duration_seconds // 60} នាទី ({plan.target_duration_seconds} វិនាទី)"
+
+    lines = [
+        f"📜 *SCRIPT ពេញលេញ (Full View) — {plan.title}*",
+        f"📌 _កំណែទី {script.version} | រយៈពេល: {dur_label}_",
+        "━━━━━━━━━━━━━━━━━━━━━\n",
+    ]
+
+    if plan.target_audience:
+        lines.append(f"👥 *ទស្សនិកជនគោលដៅ*: {plan.target_audience}")
+
+    if plan.hook:
+        clean_hook = plan.hook.replace("_", "\\_").replace("*", "\\*")
+        lines.append(f"🎯 *Hook (៣ វិនាទីដំបូង)*: \"{clean_hook}\"")
+
+    lines.append(f"🎙️ *រយៈពេលនិយាយប៉ាន់ស្មាន*: `~{plan.estimated_speaking_seconds:.1f}s`\n")
+
+    lines.append("🎬 *ខ្លឹមសារប្លង់ថត និងពាក្យនិយាយលម្អិត៖*")
+    lines.append("─────────────────────")
+
+    for sc in plan.scenes:
+        start_str = format_timestamp(sc.start_seconds)
+        end_str = format_timestamp(sc.end_seconds)
+        dur = max(0, sc.end_seconds - sc.start_seconds)
+        phase = _get_scene_phase_label(sc, len(plan.scenes), plan.target_duration_seconds)
+
+        lines.append(f"🎬 *ប្លង់ទី {sc.scene_number} `[{phase}]` | {start_str}–{end_str}* ({dur}s)")
+        if sc.spoken_text_km and sc.spoken_text_km.strip():
+            lines.append(f"🗣️ *ពាក្យនិយាយ*: \"{sc.spoken_text_km}\"")
+        else:
+            lines.append("🗣️ *ពាក្យនិយាយ*: _(Visual-only / B-roll)_")
+
+        meta_parts = []
+        if sc.shot_size:
+            meta_parts.append(f"📷 {sc.shot_size}")
+        if sc.camera_action and sc.camera_action != "Static":
+            meta_parts.append(f"📹 {sc.camera_action}")
+        if meta_parts:
+            lines.append(f"🎥 *កាមេរ៉ា*: {' | '.join(meta_parts)}")
+
+        if sc.visual_action:
+            lines.append(f"🎭 *សកម្មភាព*: {sc.visual_action}")
+        if sc.on_screen_text_km:
+            lines.append(f"📝 *អក្សរលើវីដេអូ*: `{sc.on_screen_text_km}`")
+        if sc.audio_note:
+            lines.append(f"🔊 *សំឡេង/SFX*: {sc.audio_note}")
+        if sc.editing_note:
+            lines.append(f"✂️ *កាត់ត*: {sc.editing_note}")
+        lines.append("")
+
+    lines.append("─────────────────────")
+    if plan.cta:
+        lines.append(f"📣 *Call to Action (CTA)*:\n{plan.cta}\n")
+
+    if plan.caption:
+        lines.append(f"📝 *Caption សម្រាប់ផុស*:\n{plan.caption}\n")
+
+    if plan.hashtags:
+        ht_str = " ".join(plan.hashtags) if isinstance(plan.hashtags, list) else str(plan.hashtags)
+        lines.append(f"🏷️ *Hashtags*:\n`{ht_str}`\n")
+
+    lines.append("━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("💡 _អ្នកអាចចម្លង (Copy) អត្ថបទនេះទាំងអស់ទៅប្រើ ឬផ្ញើឱ្យក្រុមការងារថតបានភ្លាមៗ!_")
     return "\n".join(lines)
 
 def render_script_read(script: SavedScript) -> str:

@@ -92,7 +92,7 @@ class TestCallbacks(unittest.TestCase):
         self.assertEqual(cb.version_or_rev, 5)
 
     def test_script_action_roundtrip(self):
-        for act in ["read", "shots", "caption", "hooks", "shorten", "regen"]:
+        for act in ["full", "read", "shots", "caption", "hooks", "shorten", "regen"]:
             data = encode_script_action("scr_123", 2, act)
             self.assertEqual(data, f"s:scr_123:2:{act}")
             cb = decode_callback(data)

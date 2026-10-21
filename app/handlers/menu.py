@@ -521,7 +521,7 @@ async def render_current_screen(query, user_key: UserKey, screen: str, state, st
         keyboard = get_review_keyboard(draft)
         await safe_edit(query, msg, reply_markup=keyboard)
 
-    elif screen in (Screens.SCRIPT_SUMMARY, Screens.SCRIPT_READ, Screens.SCRIPT_SHOTS, Screens.SCRIPT_CAPTION):
+    elif screen in (Screens.SCRIPT_SUMMARY, Screens.SCRIPT_FULL, Screens.SCRIPT_READ, Screens.SCRIPT_SHOTS, Screens.SCRIPT_CAPTION):
         script = storage.get_script(state.selected_script_id, state.selected_script_version) if (state.selected_script_id and state.selected_script_version) else storage.get_last_successful_script(user_key)
         if not script:
             return await render_current_screen(query, user_key, Screens.HOME, state, storage)
