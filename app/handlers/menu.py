@@ -536,8 +536,26 @@ async def render_current_screen(query, user_key: UserKey, screen: str, state, st
         if not script:
             return await render_current_screen(query, user_key, Screens.HOME, state, storage)
         msg = render_script_summary(script, settings["pace"])
-        keyboard = get_script_actions_keyboard(script)
+        keyboard = get_script_actions_keyboard(script, storage=storage)
         await safe_edit(query, msg, reply_markup=keyboard)
+
+    elif screen == Screens.HOOK_OPTIONS:
+        script_id = state.selected_script_id
+        script_ver = state.selected_script_version or 1
+        script = storage.get_script(script_id, script_ver) if script_id else storage.get_last_successful_script(user_key)
+        opts_data = storage.get_latest_hook_options(script.id) if script else None
+        if script and opts_data:
+            from app.views import render_hook_options
+            from app.keyboards import get_hook_options_keyboard
+            msg = render_hook_options(script, opts_data["options"])
+            kb = get_hook_options_keyboard(opts_data["token"], len(opts_data["options"]), script_id=script.id, version=script.version)
+            await safe_edit(query, msg, reply_markup=kb)
+        elif script:
+            msg = render_script_summary(script, settings["pace"])
+            keyboard = get_script_actions_keyboard(script, storage=storage)
+            await safe_edit(query, msg, reply_markup=keyboard)
+        else:
+            return await render_current_screen(query, user_key, Screens.HOME, state, storage)
 
     elif screen == Screens.IDEA_CATEGORY:
         saved_niche = storage.get_user_niche(user_key)

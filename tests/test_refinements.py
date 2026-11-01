@@ -273,5 +273,55 @@ class TestRefinements(unittest.TestCase):
         ai_mock.generate_response.assert_not_called()
         self.assertEqual(ai_mock.call_count, 0)
 
+    def test_keyboard_includes_back_to_hooks_and_previous_version(self):
+        """Keyboard displays buttons to return to 3 hook choices and revert to previous version."""
+        from app.keyboards import get_script_actions_keyboard
+
+        # v1 with no cached hooks: no extra row
+        kb_v1 = get_script_actions_keyboard(self.script_v1, storage=self.storage)
+        v1_texts = [btn.text for row in kb_v1.inline_keyboard for btn in row]
+        self.assertIn("⬅️ ត្រឡប់ក្រោយ", v1_texts)
+        self.assertIn("🏠 Menu", v1_texts)
+        self.assertNotIn("🎣 ជម្រើស Hook ទាំង ៣", v1_texts)
+        self.assertNotIn("⏪ កំណែមុន (v0)", v1_texts)
+
+        # Save hook options for script
+        self.storage.save_hook_options("tok_test", self.script_v1.id, 1, [
+            {"type": "Hook 1", "spoken_text": "Spoken 1", "visual": "Vis 1"},
+            {"type": "Hook 2", "spoken_text": "Spoken 2", "visual": "Vis 2"},
+            {"type": "Hook 3", "spoken_text": "Spoken 3", "visual": "Vis 3"},
+        ])
+
+        # Create v2 script
+        script_v2 = SavedScript(
+            id=self.script_v1.id,
+            version=2,
+            owner=self.user,
+            request_snapshot=self.script_v1.request_snapshot,
+            plan=self.initial_plan,
+            created_at=datetime.now(timezone.utc),
+        )
+        self.storage.save_successful_script(script_v2)
+
+        # Keyboard for v2 with storage provided: both buttons appear
+        kb_v2 = get_script_actions_keyboard(script_v2, storage=self.storage)
+        v2_texts = [btn.text for row in kb_v2.inline_keyboard for btn in row]
+        self.assertIn("🎣 ជម្រើស Hook ទាំង ៣", v2_texts)
+        self.assertIn("⏪ កំណែមុន (v1)", v2_texts)
+        self.assertIn("⬅️ ត្រឡប់ក្រោយ", v2_texts)
+        self.assertIn("🏠 Menu", v2_texts)
+
+    def test_storage_get_latest_hook_options(self):
+        """Storage retrieves the most recently created hook options for a script."""
+        self.assertIsNone(self.storage.get_latest_hook_options("unknown_script"))
+
+        self.storage.save_hook_options("tok_1", "script_abc", 1, [{"type": "H1", "spoken_text": "T1", "visual": "V1"}])
+        self.storage.save_hook_options("tok_2", "script_abc", 2, [{"type": "H2", "spoken_text": "T2", "visual": "V2"}])
+
+        latest = self.storage.get_latest_hook_options("script_abc")
+        self.assertIsNotNone(latest)
+        self.assertEqual(latest["token"], "tok_2")
+        self.assertEqual(latest["options"][0]["spoken_text"], "T2")
+
 if __name__ == "__main__":
     unittest.main()

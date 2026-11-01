@@ -2,7 +2,7 @@
 app/keyboards.py - All Telegram Inline Keyboards using compact callback data.
 """
 
-from typing import Optional
+from typing import Optional, Any
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.callbacks import (
     encode_menu,
@@ -149,17 +149,19 @@ def get_draft_duration_keyboard(draft: Draft) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_script_actions_keyboard(script: SavedScript) -> InlineKeyboardMarkup:
+def get_script_actions_keyboard(
+    script: SavedScript,
+    storage: Optional[Any] = None,
+    has_hook_options: bool = False,
+) -> InlineKeyboardMarkup:
     """
     Script actions keyboard:
-    📖 ពាក្យនិយាយ
-    🎥 ប្លង់ថត
-    📝 Caption
-    🎣 ប្ដូរ Hook
-    ✂️ កាត់ពាក្យឲ្យខ្លី
-    🔁 បង្កើតកំណែថ្មី
-    ✏️ កែសំណើ
-    🏠 Menu
+    - Row 1: Script ពេញលេញ
+    - Row 2: ពាក្យនិយាយ, ប្លង់ថត, Caption
+    - Row 3: ប្ដូរ Hook, កាត់ពាក្យឲ្យខ្លី
+    - Row 4: បង្កើតកំណែថ្មី, កែសំណើ
+    - Row 5: ជម្រើស Hook ទាំង ៣, កំណែមុន (if available)
+    - Row 6: ត្រឡប់ក្រោយ, Menu
     """
     sid = script.id
     ver = script.version
@@ -180,10 +182,28 @@ def get_script_actions_keyboard(script: SavedScript) -> InlineKeyboardMarkup:
             InlineKeyboardButton("🔁 បង្កើតកំណែថ្មី", callback_data=encode_script_action(sid, ver, "regen")),
             InlineKeyboardButton("✏️ កែសំណើ", callback_data=encode_script_action(sid, ver, "edit_req")),
         ],
-        [
-            InlineKeyboardButton("🏠 Menu", callback_data=encode_nav("home")),
-        ],
     ]
+
+    has_cached_hooks = has_hook_options
+    if not has_cached_hooks and storage is not None:
+        try:
+            has_cached_hooks = bool(storage.get_latest_hook_options(sid))
+        except Exception:
+            has_cached_hooks = False
+
+    extra_row = []
+    if has_cached_hooks:
+        extra_row.append(InlineKeyboardButton("🎣 ជម្រើស Hook ទាំង ៣", callback_data=encode_script_action(sid, ver, "hooks_view")))
+    if ver > 1:
+        extra_row.append(InlineKeyboardButton(f"⏪ កំណែមុន (v{ver-1})", callback_data=encode_script_action(sid, ver, "prev_ver")))
+
+    if extra_row:
+        keyboard.append(extra_row)
+
+    keyboard.append([
+        InlineKeyboardButton("⬅️ ត្រឡប់ក្រោយ", callback_data=encode_nav("back")),
+        InlineKeyboardButton("🏠 Menu", callback_data=encode_nav("home")),
+    ])
     return InlineKeyboardMarkup(keyboard)
 
 def get_failure_keyboard(request_id: str) -> InlineKeyboardMarkup:

@@ -633,6 +633,22 @@ class Storage:
                 "created_at": row["created_at"],
             }
 
+    def get_latest_hook_options(self, script_id: str) -> Optional[dict]:
+        """Retrieves the most recently generated hook options for a script."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM hook_options WHERE script_id = ? ORDER BY created_at DESC LIMIT 1", (script_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "token": row["token"],
+                "script_id": row["script_id"],
+                "script_version": row["script_version"],
+                "options": json.loads(row["options_json"]),
+                "created_at": row["created_at"],
+            }
+
     # ─────────────────────────────────────────────
     # Subscription Operations
     # ─────────────────────────────────────────────
