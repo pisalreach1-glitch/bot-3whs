@@ -228,11 +228,25 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     if draft and not state.draft_id:
         state.draft_id = draft.id
 
-    is_entering_topic = (state.current_screen in active_screens) or (
-        state.current_screen == Screens.HOME and draft and not draft.topic and draft.current_step in ("topic", "topic_or_ideas", "comedy_style", "comedy_actors", "format")
+    is_entering_topic = (
+        (state.current_screen in active_screens)
+        or (draft and not draft.topic and draft.current_step in ("topic", "topic_or_ideas", "comedy_style", "comedy_actors", "format"))
     )
 
-    if is_entering_topic and draft:
+    if is_entering_topic:
+        if not draft:
+            niche = storage.get_user_niche(user_key) or "ទូទៅ"
+            draft = Draft(
+                id=f"d_{uuid.uuid4().hex[:8]}",
+                revision=1,
+                format_id="3whs",
+                topic="",
+                duration_seconds=60,
+                audience="",
+                current_step="topic",
+                owner=user_key,
+                niche=niche,
+            )
         draft.topic = user_text.strip()
         draft.audience = user_text.strip()
         if not draft.niche:

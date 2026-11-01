@@ -244,11 +244,16 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         draft_id = decoded.token
         draft = storage.get_draft(draft_id) if draft_id else None
         if not draft:
-            await query.answer("⚠️ រកមិនឃើញទិន្នន័យព្រាងឡើយ។", show_alert=True)
-            return
-        if draft.owner and draft.owner != user_key:
-            await query.answer("⚠️ អ្នកគ្មានសិទ្ធិកែប្រែ Draft របស់អ្នកដទៃឡើយ!", show_alert=True)
-            return
+            draft = storage.get_latest_draft(user_key)
+        if not draft:
+            draft = Draft(
+                id=f"d_{uuid.uuid4().hex[:8]}",
+                owner=user_key,
+                niche=storage.get_user_niche(user_key) or "ទូទៅ",
+                format_id="3whs",
+                duration_seconds=60,
+                current_step="topic",
+            )
         draft.current_step = "topic"
         storage.save_draft(user_key, draft)
         navigation.go_to(user_key, Screens.TOPIC_INPUT, draft_id=draft.id)
@@ -259,11 +264,16 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         draft_id = decoded.token
         draft = storage.get_draft(draft_id) if draft_id else None
         if not draft:
-            await query.answer("⚠️ រកមិនឃើញទិន្នន័យព្រាងឡើយ។", show_alert=True)
-            return
-        if draft.owner and draft.owner != user_key:
-            await query.answer("⚠️ អ្នកគ្មានសិទ្ធិកែប្រែ Draft របស់អ្នកដទៃឡើយ!", show_alert=True)
-            return
+            draft = storage.get_latest_draft(user_key)
+        if not draft:
+            draft = Draft(
+                id=f"d_{uuid.uuid4().hex[:8]}",
+                owner=user_key,
+                niche=storage.get_user_niche(user_key) or "ទូទៅ",
+                format_id="3whs",
+                duration_seconds=60,
+            )
+            storage.save_draft(user_key, draft)
         from app.handlers.ideas import start_ideas_flow
         await start_ideas_flow(
             update,
