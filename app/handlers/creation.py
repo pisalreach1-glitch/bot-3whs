@@ -49,19 +49,28 @@ async def handle_format_callback(update: Update, context: ContextTypes.DEFAULT_T
     decoded = decode_callback(query.data)
 
     draft = storage.get_draft(decoded.token)
-    if not draft:
-        await query.message.reply_text("⚠️ រកមិនឃើញទិន្នន័យព្រាង (Draft) ឡើយ។ សូមចាប់ផ្តើមជាថ្មី។")
-        return
-
-    # Check ownership
-    if draft.owner and draft.owner != user_key:
+    if draft and draft.owner and draft.owner != user_key:
         await query.answer("⚠️ អ្នកគ្មានសិទ្ធិកែប្រែ Draft របស់អ្នកដទៃឡើយ!", show_alert=True)
         return
 
-    # Check stale revision
-    if draft.revision != decoded.version_or_rev:
-        await query.answer("⚠️ ប៊ូតុងនេះផុតសុពលភាពហើយ (Stale action)។", show_alert=True)
-        return
+    if not draft:
+        draft = storage.get_latest_draft(user_key)
+    if not draft:
+        saved_niche = storage.get_user_niche(user_key)
+        settings = storage.get_settings(user_key)
+        from script_models import parse_duration_seconds
+        draft = Draft(
+            id=f"d_{uuid.uuid4().hex[:8]}",
+            revision=1,
+            format_id=decoded.action or "3whs",
+            topic="",
+            duration_seconds=parse_duration_seconds(settings.get("duration", "60 វិនាទី")),
+            audience="",
+            current_step="topic_or_ideas",
+            owner=user_key,
+            niche=saved_niche or "ទូទៅ",
+        )
+    draft.owner = user_key
 
     draft.format_id = decoded.action
     if not draft.niche:
@@ -98,18 +107,26 @@ async def handle_draft_duration_callback(update: Update, context: ContextTypes.D
     decoded = decode_callback(query.data)
 
     draft = storage.get_draft(decoded.token)
-    if not draft:
-        await query.answer("⚠️ រកមិនឃើញទិន្នន័យព្រាងឡើយ។", show_alert=True)
-        return
-
-    # Check ownership
-    if draft.owner and draft.owner != user_key:
+    if draft and draft.owner and draft.owner != user_key:
         await query.answer("⚠️ អ្នកគ្មានសិទ្ធិកែប្រែ Draft របស់អ្នកដទៃឡើយ!", show_alert=True)
         return
 
-    if draft.revision != decoded.version_or_rev:
-        await query.answer("⚠️ ប៊ូតុងនេះផុតសុពលភាពហើយ។", show_alert=True)
-        return
+    if not draft:
+        draft = storage.get_latest_draft(user_key)
+    if not draft:
+        saved_niche = storage.get_user_niche(user_key)
+        draft = Draft(
+            id=f"d_{uuid.uuid4().hex[:8]}",
+            revision=1,
+            format_id="3whs",
+            topic="",
+            duration_seconds=int(decoded.extra) if decoded.extra else 60,
+            audience="",
+            current_step="review",
+            owner=user_key,
+            niche=saved_niche or "ទូទៅ",
+        )
+    draft.owner = user_key
 
     # Update draft duration without altering user global settings
     draft.duration_seconds = int(decoded.extra)
@@ -132,19 +149,17 @@ async def handle_generate_callback(update: Update, context: ContextTypes.DEFAULT
 
     decoded = decode_callback(query.data)
     draft = storage.get_draft(decoded.token)
-
-    if not draft:
-        await query.answer("⚠️ រកមិនឃើញទិន្នន័យព្រាងឡើយ។", show_alert=True)
-        return
-
-    # Check ownership
-    if draft.owner and draft.owner != user_key:
+    if draft and draft.owner and draft.owner != user_key:
         await query.answer("⚠️ អ្នកគ្មានសិទ្ធិបង្កើត Script ពី Draft របស់អ្នកដទៃឡើយ!", show_alert=True)
         return
 
-    if draft.revision != decoded.version_or_rev:
-        await query.answer("⚠️ សំណើនេះត្រូវបានកែប្រែរួចហើយ (Stale action)។", show_alert=True)
+    if not draft:
+        draft = storage.get_latest_draft(user_key)
+
+    if not draft or not draft.topic:
+        await query.answer("⚠️ សូមបញ្ចូលប្រធានបទជាមុនសិន។", show_alert=True)
         return
+    draft.owner = user_key
 
     await query.answer("✨ កំពុងចាប់ផ្តើមបង្កើត Script...")
 
