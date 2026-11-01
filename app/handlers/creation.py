@@ -32,6 +32,7 @@ from app.views import (
     render_script_summary,
     render_failure,
     render_topic_or_ideas,
+    recover_draft_from_review_text,
 )
 from app.services.generation import execute_generation_request
 from app.handlers.commands import get_user_key
@@ -106,13 +107,19 @@ async def handle_draft_duration_callback(update: Update, context: ContextTypes.D
     storage = context.bot_data["storage"]
     decoded = decode_callback(query.data)
 
-    draft = storage.get_draft(decoded.token)
+    draft = storage.get_draft(decoded.token) if decoded.token else None
     if draft and draft.owner and draft.owner != user_key:
         await query.answer("⚠️ អ្នកគ្មានសិទ្ធិកែប្រែ Draft របស់អ្នកដទៃឡើយ!", show_alert=True)
         return
 
     if not draft:
         draft = storage.get_latest_draft(user_key)
+    if (not draft or not draft.topic) and query.message:
+        msg_text = query.message.text or query.message.caption or ""
+        recovered = recover_draft_from_review_text(msg_text, user_key, draft_id=decoded.token)
+        if recovered:
+            draft = recovered
+            storage.save_draft(user_key, draft)
     if not draft:
         saved_niche = storage.get_user_niche(user_key)
         draft = Draft(
@@ -148,13 +155,24 @@ async def handle_generate_callback(update: Update, context: ContextTypes.DEFAULT
     ai = context.bot_data["ai"]
 
     decoded = decode_callback(query.data)
-    draft = storage.get_draft(decoded.token)
+    draft = storage.get_draft(decoded.token) if decoded.token else None
     if draft and draft.owner and draft.owner != user_key:
         await query.answer("⚠️ អ្នកគ្មានសិទ្ធិបង្កើត Script ពី Draft របស់អ្នកដទៃឡើយ!", show_alert=True)
         return
 
-    if not draft:
+    if not draft or not draft.topic:
         draft = storage.get_latest_draft(user_key)
+
+    # Auto-recovery fallback from message text (protects against Render restarts)
+    if (not draft or not draft.topic) and query.message:
+        msg_text = query.message.text or query.message.caption or ""
+        recovered = recover_draft_from_review_text(msg_text, user_key, draft_id=decoded.token)
+        if recovered and recovered.topic:
+            draft = recovered
+            draft.owner = user_key
+            storage.save_draft(user_key, draft)
+            navigation.set_draft(user_key, draft.id)
+            logger.info(f"Auto-recovered draft {draft.id} with topic '{draft.topic[:30]}...' from review message text.")
 
     if not draft or not draft.topic:
         await query.answer("⚠️ សូមបញ្ចូលប្រធានបទជាមុនសិន។", show_alert=True)

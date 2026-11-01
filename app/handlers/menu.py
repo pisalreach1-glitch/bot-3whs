@@ -35,6 +35,7 @@ from app.views import (
     render_help,
     render_topic_prompt,
     render_ideas_category_selection,
+    recover_draft_from_review_text,
 )
 from app.handlers.commands import get_user_key
 from app.telegram_io import safe_edit
@@ -350,6 +351,15 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         draft_id = decoded.token
         draft = storage.get_draft(draft_id) if draft_id else None
         if not draft:
+            draft = storage.get_latest_draft(user_key)
+        if (not draft or not draft.topic) and query.message:
+            msg_text = query.message.text or query.message.caption or ""
+            recovered = recover_draft_from_review_text(msg_text, user_key, draft_id=draft_id)
+            if recovered:
+                draft = recovered
+                storage.save_draft(user_key, draft)
+                navigation.set_draft(user_key, draft.id)
+        if not draft:
             await query.answer("⚠️ រកមិនឃើញទិន្នន័យព្រាងឡើយ។", show_alert=True)
             return
         if draft.owner and draft.owner != user_key:
@@ -365,6 +375,15 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     elif action == "edit_dur":
         draft_id = decoded.token
         draft = storage.get_draft(draft_id) if draft_id else None
+        if not draft:
+            draft = storage.get_latest_draft(user_key)
+        if not draft and query.message:
+            msg_text = query.message.text or query.message.caption or ""
+            recovered = recover_draft_from_review_text(msg_text, user_key, draft_id=draft_id)
+            if recovered:
+                draft = recovered
+                storage.save_draft(user_key, draft)
+                navigation.set_draft(user_key, draft.id)
         if not draft:
             await query.answer("⚠️ រកមិនឃើញទិន្នន័យព្រាងឡើយ។", show_alert=True)
             return
@@ -525,6 +544,15 @@ async def render_current_screen(query, user_key: UserKey, screen: str, state, st
 
     elif screen == Screens.DRAFT_REVIEW:
         draft = storage.get_draft(state.draft_id) if state.draft_id else None
+        if not draft:
+            draft = storage.get_latest_draft(user_key)
+        if not draft and query.message:
+            msg_text = query.message.text or query.message.caption or ""
+            recovered = recover_draft_from_review_text(msg_text, user_key, draft_id=state.draft_id)
+            if recovered:
+                draft = recovered
+                storage.save_draft(user_key, draft)
+                navigation.set_draft(user_key, draft.id)
         if not draft:
             return await render_current_screen(query, user_key, Screens.HOME, state, storage)
         msg = render_review(draft, settings["pace"])

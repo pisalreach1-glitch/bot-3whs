@@ -5,8 +5,10 @@ Renders directly from validated ScriptPlan and domain models.
 Never displays raw JSON or tracebacks.
 """
 
+import re
+import uuid
 from typing import List, Optional
-from app.models import Draft, SavedScript, Idea, EvidenceRecord
+from app.models import Draft, SavedScript, Idea, EvidenceRecord, UserKey
 from script_models import ScriptPlan, Scene, format_timestamp
 
 FORMAT_NAMES = {
@@ -175,6 +177,132 @@ def render_review(draft: Draft, pace: float) -> str:
         "👉 _ពិនិត្យព័ត៌មានខាងលើ រួចចុច «✨ បង្កើត Script» ដើម្បីឱ្យ AI រៀបចំផែនការថត!_",
     ])
     return "\n".join(lines)
+
+def recover_draft_from_review_text(text: str, user_key: UserKey, draft_id: Optional[str] = None) -> Optional[Draft]:
+    """
+    Recovers a Draft domain model from a rendered Draft Review message text.
+    Handles ephemeral container restarts and lost SQLite sessions gracefully.
+    """
+    if not text:
+        return None
+
+    # Check if text looks like a Draft Review screen
+    is_review = (
+        ("Draft Review" in text)
+        or ("ផ្ទៀងផ្ទាត់ព័ត៌មានសំណើ" in text)
+        or ("ប្រធានបទ" in text and ("ទម្រង់" in text or "វិស័យ" in text or "រយៈពេល" in text))
+    )
+    if not is_review:
+        return None
+
+    # 1. Extract Topic (can be multi-line with dollar signs and symbols)
+    # Topic is between 'ប្រធានបទ:' and the next bullet/section marker
+    m_topic = re.search(
+        r'(?:•\s*)?(?:📝\s*)?\*?ប្រធានបទ\*?\s*:\s*(.*?)(?=\n\s*(?:•\s*)?(?:⏱️|😂|👥|🎙️|🔗|━+|👉|$))',
+        text,
+        re.DOTALL
+    )
+    topic = ""
+    if m_topic:
+        raw_topic = m_topic.group(1).strip()
+        # Unescape markdown formatting characters if present
+        raw_topic = (
+            raw_topic
+            .replace(r"\_", "_")
+            .replace(r"\*", "*")
+            .replace(r"\[", "[")
+            .replace(r"\]", "]")
+            .replace(r"\`", "`")
+        )
+        topic = raw_topic
+
+    if not topic:
+        # Fallback regex for topic if section delimiter differed
+        m_top_fallback = re.search(r'(?:•\s*)?(?:📝\s*)?\*?ប្រធានបទ\*?\s*:\s*([^\n]+)', text)
+        if m_top_fallback:
+            topic = m_top_fallback.group(1).strip().replace(r"\_", "_").replace(r"\*", "*")
+
+    if not topic:
+        return None
+
+    # 2. Extract Niche
+    niche = "ទូទៅ"
+    m_niche = re.search(r'(?:•\s*)?(?:🎯\s*)?\*?វិស័យ(?:មាតិកា)?\*?\s*:\s*([^\n]+)', text)
+    if m_niche:
+        niche = m_niche.group(1).strip().strip("`*")
+
+    # 3. Extract Format
+    format_id = "3whs"
+    m_fmt = re.search(r'(?:•\s*)?(?:🎬\s*)?\*?ទម្រង់(?:មាតិកា)?\*?\s*:\s*([^\n]+)', text)
+    if m_fmt:
+        fmt_line = m_fmt.group(1).lower()
+        if "3whs" in fmt_line or "hook" in fmt_line:
+            format_id = "3whs"
+        elif "pov" in fmt_line or "និទាន" in fmt_line:
+            format_id = "pov"
+        elif "myth" in fmt_line or "ការពិត" in fmt_line or "ជំនឿ" in fmt_line:
+            format_id = "myth"
+        elif "before" in fmt_line or "មុន" in fmt_line or "ក្រោយ" in fmt_line or "transform" in fmt_line:
+            format_id = "transform"
+        elif "hot" in fmt_line or "ប្លែក" in fmt_line or "មតិផ្ទុយ" in fmt_line or "hottake" in fmt_line:
+            format_id = "hottake"
+        elif "top" in fmt_line or "បញ្ជី" in fmt_line or "ចាត់ថ្នាក់" in fmt_line or "toplist" in fmt_line:
+            format_id = "toplist"
+        elif "comedy" in fmt_line or "កំប្លែង" in fmt_line:
+            format_id = "comedy"
+
+    # 4. Extract Duration
+    duration_seconds = 60
+    m_dur = re.search(r'(?:•\s*)?(?:⏱️\s*)?\*?រយៈពេល(?:វីដេអូ)?\*?\s*:\s*([^\n]+)', text)
+    if m_dur:
+        dur_str = m_dur.group(1)
+        m_paren = re.search(r'\((\d+)\s*វិនាទី\)', dur_str)
+        if m_paren:
+            duration_seconds = int(m_paren.group(1))
+        else:
+            m_s = re.search(r'(\d+)\s*វិនាទី', dur_str)
+            if m_s:
+                duration_seconds = int(m_s.group(1))
+            else:
+                m_m = re.search(r'(\d+)\s*នាទី', dur_str)
+                if m_m:
+                    duration_seconds = int(m_m.group(1)) * 60
+
+    # 5. Extract Comedy Style & Actor Count if present
+    comedy_style = None
+    m_style = re.search(r'(?:•\s*)?(?:😂\s*)?\*?ស្ទីលកំប្លែង\*?\s*:\s*([^\n]+)', text)
+    if m_style:
+        s_line = m_style.group(1).lower()
+        if "everyday" in s_line or "រស់នៅ" in s_line:
+            comedy_style = "everyday"
+        elif "parody" in s_line or "ត្រាប់" in s_line:
+            comedy_style = "parody"
+        elif "drama" in s_line or "រឿងធំ" in s_line:
+            comedy_style = "drama"
+        elif "sarcasm" in s_line or "ឌឺដង" in s_line or "sarcastic" in s_line:
+            comedy_style = "sarcasm"
+
+    actor_count = None
+    m_acts = re.search(r'(?:•\s*)?(?:👥\s*)?\*?ចំនួនតួអង្គ\*?\s*:\s*(\d+)', text)
+    if m_acts:
+        actor_count = int(m_acts.group(1))
+
+    effective_id = draft_id if (draft_id and str(draft_id).startswith("d_")) else f"d_{uuid.uuid4().hex[:8]}"
+
+    return Draft(
+        id=effective_id,
+        revision=1,
+        format_id=format_id,
+        topic=topic,
+        duration_seconds=duration_seconds,
+        audience=topic,
+        comedy_style=comedy_style,
+        actor_count=actor_count,
+        evidence_ids=[],
+        current_step="review",
+        owner=user_key,
+        niche=niche,
+    )
 
 def _get_scene_phase_label(sc: Scene, total_scenes: int, target_seconds: int) -> str:
     """Helper to detect and display the 3WHs formula phase for a scene."""
