@@ -33,11 +33,31 @@ class Screens:
     HELP = "HELP"
 
 class NavigationManager:
-    def __init__(self):
+    def __init__(self, storage=None):
         self._states: Dict[UserKey, NavigationState] = {}
+        self._storage = storage
+
+    def set_storage(self, storage):
+        self._storage = storage
+
+    def _persist(self, user_key: UserKey, state: NavigationState):
+        if self._storage and hasattr(self._storage, "save_navigation_state"):
+            try:
+                self._storage.save_navigation_state(user_key, state)
+            except Exception:
+                pass
 
     def get_state(self, user_key: UserKey) -> NavigationState:
         if user_key not in self._states:
+            if self._storage and hasattr(self._storage, "get_navigation_state"):
+                try:
+                    persisted = self._storage.get_navigation_state(user_key)
+                    if persisted:
+                        self._states[user_key] = persisted
+                        return persisted
+                except Exception:
+                    pass
+
             self._states[user_key] = NavigationState(
                 current_screen=Screens.HOME,
                 screen_history=[],
@@ -69,6 +89,7 @@ class NavigationManager:
             state.selected_script_id = script_id
         if script_version is not None:
             state.selected_script_version = script_version
+        self._persist(user_key, state)
         return state
 
     def go_back(self, user_key: UserKey) -> Tuple[str, NavigationState]:
@@ -79,6 +100,7 @@ class NavigationManager:
             state.current_screen = prev_screen
         else:
             state.current_screen = Screens.HOME
+        self._persist(user_key, state)
         return state.current_screen, state
 
     def go_home(self, user_key: UserKey) -> NavigationState:
@@ -86,16 +108,19 @@ class NavigationManager:
         state = self.get_state(user_key)
         state.current_screen = Screens.HOME
         state.screen_history.clear()
+        self._persist(user_key, state)
         return state
 
     def set_draft(self, user_key: UserKey, draft_id: str):
         state = self.get_state(user_key)
         state.draft_id = draft_id
+        self._persist(user_key, state)
 
     def set_script(self, user_key: UserKey, script_id: str, version: int):
         state = self.get_state(user_key)
         state.selected_script_id = script_id
         state.selected_script_version = version
+        self._persist(user_key, state)
 
     def clear(self):
         """Clears all in-memory navigation states."""

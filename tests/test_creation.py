@@ -188,5 +188,66 @@ class TestCreationFlow(unittest.TestCase):
     def test_cancelled_request_never_saves(self):
         asyncio.run(self._async_test_cancelled_request_never_saves())
 
+    def test_multiline_topic_with_dollar_signs_handles_cleanly(self):
+        """User input containing newlines and dollar signs creates valid draft and render review."""
+        from bot import handle_text_message
+        from app.navigation import navigation, Screens
+        from telegram import Update, Message, User, Chat
+
+        user_text = """1 មុខ 90$ នំប៉័ងសាច់ បាយសិស្សសាលា ស៊ុបគុយទាវ ស៊ុបហ្វឺ មីឆាគីឡូ ។ល។ ជាមីនុយប្រភេទអាហារសម្រន់ពិសេសក្នុងហាង
+
+2 មុខ 150$ បាយសិស្សសាលា នំប៉័ងសាច់
+4 មុខ 210$ លតឆា គុយទាវទឹកក្ដៅ នំគួឆាយ
+ដែលនៅក្នុងនោះគឺថាមីនុយពិសេសនៅប្រចាំហាង
+ប៉ុន្តែយើងនៅមានពាក់ជាច្រើនទៀត ទាក់ទងជាមួយនឹងអាហារសម្រន់"""
+
+        # Setup draft in storage and navigation
+        draft = Draft(
+            id="d_food_test",
+            revision=1,
+            format_id="3whs",
+            topic="",
+            duration_seconds=60,
+            audience="",
+            current_step="topic",
+            owner=self.user,
+            niche="សាលាបង្រៀនធ្វើម្ហូបអនឡាញ",
+        )
+        self.storage.save_draft(self.user, draft)
+        navigation.set_storage(self.storage)
+        navigation.go_to(self.user, Screens.TOPIC_INPUT, draft_id="d_food_test")
+
+        # Mock telegram update
+        update = MagicMock(spec=Update)
+        message = MagicMock(spec=Message)
+        message.text = user_text
+        message.from_user = User(id=self.user.user_id, is_bot=False, first_name="TestUser")
+        message.chat = Chat(id=self.user.chat_id, type="private")
+        message.reply_text = AsyncMock()
+        update.message = message
+        update.effective_user = message.from_user
+        update.effective_chat = message.chat
+
+        context = MagicMock()
+        context.bot_data = {
+            "storage": self.storage,
+            "ai": MagicMock(),
+            "task_mgr": self.task_mgr,
+        }
+
+        asyncio.run(handle_text_message(update, context))
+
+        # Check that draft updated with user's topic
+        updated_draft = self.storage.get_draft("d_food_test")
+        self.assertIsNotNone(updated_draft)
+        self.assertEqual(updated_draft.topic, user_text)
+        self.assertEqual(updated_draft.current_step, "review")
+
+        # Check message was replied to with review
+        message.reply_text.assert_called()
+        call_text = message.reply_text.call_args[0][0]
+        self.assertIn("ផ្ទៀងផ្ទាត់ព័ត៌មានសំណើ", call_text)
+        self.assertIn("1 មុខ 90$", call_text)
+
 if __name__ == "__main__":
     unittest.main()

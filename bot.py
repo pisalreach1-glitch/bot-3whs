@@ -84,6 +84,7 @@ logger = logging.getLogger(__name__)
 
 # Default instances for backward compatibility
 default_storage = Storage()
+navigation.set_storage(default_storage)
 default_ai = AIService()
 ai_service = default_ai
 
@@ -118,7 +119,10 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     Routes user text according to active navigation state.
     Does not send user input to free chat while a wizard step is active.
     """
-    user_text = update.message.text
+    if not update.message or not update.message.text:
+        return
+
+    user_text = update.message.text.strip()
     if not user_text:
         return
 
@@ -126,172 +130,196 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     storage = context.bot_data.get("storage", default_storage) if (hasattr(context, "bot_data") and isinstance(context.bot_data, dict)) else default_storage
     ai = context.bot_data.get("ai", ai_service) if (hasattr(context, "bot_data") and isinstance(context.bot_data, dict)) else ai_service
     task_mgr = context.bot_data.get("task_mgr", task_manager) if (hasattr(context, "bot_data") and isinstance(context.bot_data, dict)) else task_manager
+
+    # Ensure navigation has storage attached for durability
+    navigation.set_storage(storage)
     state = navigation.get_state(user_key)
 
-    # Legacy state compatibility for tests
-    if hasattr(context, "user_data") and isinstance(context.user_data, dict) and context.user_data.get("state") == "awaiting_topic":
-        content_type = context.user_data.get("content_type", "3whs")
-        target_ai = ai_service if hasattr(ai_service, "generate_content_by_type") else ai
-        import asyncio
-        call_res = target_ai.generate_content_by_type(content_type, user_text)
-        res = await call_res if asyncio.iscoroutine(call_res) else call_res
-        if getattr(res, "success", False) and getattr(res, "plan", None):
-            context.user_data["last_script"] = res.formatted_text
-            context.user_data["last_script_plan"] = res.plan
-            await update.message.reply_text("រួចរាល់!\n" + res.formatted_text)
-        else:
-            err = getattr(res, "error_message", None) or "កំហុសបច្ចេកទេស"
-            await update.message.reply_text(f"មិនទាន់ជោគជ័យ៖ {err}")
-        return
+    try:
+        # Legacy state compatibility for tests
+        if hasattr(context, "user_data") and isinstance(context.user_data, dict) and context.user_data.get("state") == "awaiting_topic":
+            content_type = context.user_data.get("content_type", "3whs")
+            target_ai = ai_service if hasattr(ai_service, "generate_content_by_type") else ai
+            import asyncio
+            call_res = target_ai.generate_content_by_type(content_type, user_text)
+            res = await call_res if asyncio.iscoroutine(call_res) else call_res
+            if getattr(res, "success", False) and getattr(res, "plan", None):
+                context.user_data["last_script"] = res.formatted_text
+                context.user_data["last_script_plan"] = res.plan
+                await update.message.reply_text("រួចរាល់!\n" + res.formatted_text)
+            else:
+                err = getattr(res, "error_message", None) or "កំហុសបច្ចេកទេស"
+                await update.message.reply_text(f"មិនទាន់ជោគជ័យ៖ {err}")
+            return
 
-    # 0. State: Entering Custom Niche
-    if state.current_screen == Screens.NICHE_CUSTOM_INPUT:
-        custom_niche = user_text.strip()
-        if custom_niche:
-            storage.save_user_niche(user_key, custom_niche)
-            storage.clear_incompatible_drafts(user_key)
+        # 0. State: Entering Custom Niche
+        if state.current_screen == Screens.NICHE_CUSTOM_INPUT:
+            custom_niche = user_text
+            if custom_niche:
+                storage.save_user_niche(user_key, custom_niche)
+                storage.clear_incompatible_drafts(user_key)
 
-            pending_comedy = False
-            if hasattr(context, "user_data") and isinstance(context.user_data, dict):
-                if context.user_data.get("pending_action") == "comedy":
-                    pending_comedy = True
-                    context.user_data.pop("pending_action", None)
+                pending_comedy = False
+                if hasattr(context, "user_data") and isinstance(context.user_data, dict):
+                    if context.user_data.get("pending_action") == "comedy":
+                        pending_comedy = True
+                        context.user_data.pop("pending_action", None)
 
-            settings = storage.get_settings(user_key)
-            from script_models import parse_duration_seconds
-            dur_s = parse_duration_seconds(settings["duration"])
+                settings = storage.get_settings(user_key)
+                from script_models import parse_duration_seconds
+                dur_s = parse_duration_seconds(settings["duration"])
 
-            from app.telegram_io import safe_reply
+                from app.telegram_io import safe_reply
 
-            if pending_comedy:
+                if pending_comedy:
+                    draft = Draft(
+                        id=f"d_{uuid.uuid4().hex[:8]}",
+                        revision=1,
+                        format_id="comedy",
+                        topic="",
+                        duration_seconds=dur_s,
+                        audience="",
+                        comedy_style="everyday",
+                        actor_count=1,
+                        current_step="comedy_style",
+                        owner=user_key,
+                        niche=custom_niche,
+                    )
+                    storage.save_draft(user_key, draft)
+                    navigation.go_to(user_key, Screens.COMEDY_STYLE, draft_id=draft.id)
+                    from app.keyboards import get_comedy_styles_keyboard
+                    notice = (
+                        f"✅ *បានកំណត់វិស័យផ្ទាល់ខ្លួន៖* `{custom_niche}`\n\n"
+                        "😂 *ជ្រើសរើសស្ទីលកំប្លែង (Comedy Style)*\n"
+                        "━━━━━━━━━━━━━━━━━━━━━\n"
+                        "សូមជ្រើសរើសទម្រង់កំប្លែងដែលអ្នកចង់ផលិតខាងក្រោម៖"
+                    )
+                    await safe_reply(update.message, notice, reply_markup=get_comedy_styles_keyboard(draft))
+                    return
+
                 draft = Draft(
                     id=f"d_{uuid.uuid4().hex[:8]}",
                     revision=1,
-                    format_id="comedy",
+                    format_id="3whs",
                     topic="",
                     duration_seconds=dur_s,
                     audience="",
-                    comedy_style="everyday",
-                    actor_count=1,
-                    current_step="comedy_style",
+                    current_step="format",
                     owner=user_key,
                     niche=custom_niche,
                 )
                 storage.save_draft(user_key, draft)
-                navigation.go_to(user_key, Screens.COMEDY_STYLE, draft_id=draft.id)
-                from app.keyboards import get_comedy_styles_keyboard
+                navigation.go_to(user_key, Screens.FORMAT_SELECTION, draft_id=draft.id)
+
+                from app.views import render_format_selection
+                from app.keyboards import get_format_selection_keyboard
+
                 notice = (
-                    f"✅ *បានកំណត់វិស័យផ្ទាល់ខ្លួន៖* `{custom_niche}`\n\n"
-                    "😂 *ជ្រើសរើសស្ទីលកំប្លែង (Comedy Style)*\n"
-                    "━━━━━━━━━━━━━━━━━━━━━\n"
-                    "សូមជ្រើសរើសទម្រង់កំប្លែងដែលអ្នកចង់ផលិតខាងក្រោម៖"
+                    f"✅ *បានកំណត់វិស័យផ្ទាល់ខ្លួន៖* `{custom_niche}`\n"
+                    "_(សេចក្ដីព្រាងចាស់ដែលមិនត្រូវគ្នាត្រូវបានជម្រះ ប៉ុន្តែ Script ជោគជ័យត្រូវបានរក្សាទុកដដែល)_\n\n"
                 )
-                await safe_reply(update.message, notice, reply_markup=get_comedy_styles_keyboard(draft))
+                msg = notice + render_format_selection(custom_niche)
+                keyboard = get_format_selection_keyboard(draft)
+                await safe_reply(update.message, msg, reply_markup=keyboard)
                 return
 
-            draft = Draft(
-                id=f"d_{uuid.uuid4().hex[:8]}",
-                revision=1,
-                format_id="3whs",
-                topic="",
-                duration_seconds=dur_s,
-                audience="",
-                current_step="format",
-                owner=user_key,
-                niche=custom_niche,
-            )
+        # 1. State: Entering Pace Seconds
+        if state.current_screen == Screens.PACE_SECONDS:
+            await handle_pace_seconds_input(update, context, user_text)
+            return
+
+        # 2. State: Entering Topic for Draft
+        active_screens = (
+            Screens.TOPIC_INPUT,
+            Screens.TOPIC_OR_IDEAS,
+            Screens.FORMAT_SELECTION,
+            Screens.IDEA_RESULTS,
+            Screens.COMEDY_STYLE,
+            Screens.COMEDY_ACTORS,
+            Screens.HOME,
+        )
+        draft = storage.get_draft(state.draft_id) if state.draft_id else storage.get_latest_draft(user_key)
+        if draft and not state.draft_id:
+            state.draft_id = draft.id
+
+        is_entering_topic = (
+            (state.current_screen in active_screens)
+            or (draft and draft.current_step in ("topic", "topic_input", "topic_or_ideas", "comedy_style", "comedy_actors", "format"))
+            or (state.current_screen not in (Screens.PACE_SECONDS, Screens.SETTINGS, Screens.NICHE_CUSTOM_INPUT))
+        )
+
+        if is_entering_topic:
+            if not draft:
+                niche = storage.get_user_niche(user_key) or "ទូទៅ"
+                settings = storage.get_settings(user_key)
+                from script_models import parse_duration_seconds
+                dur_s = parse_duration_seconds(settings.get("duration", "60 វិនាទី"))
+                draft = Draft(
+                    id=f"d_{uuid.uuid4().hex[:8]}",
+                    revision=1,
+                    format_id="3whs",
+                    topic="",
+                    duration_seconds=dur_s,
+                    audience="",
+                    current_step="topic",
+                    owner=user_key,
+                    niche=niche,
+                )
+            draft.topic = user_text
+            draft.audience = user_text
+            if not draft.niche:
+                draft.niche = storage.get_user_niche(user_key) or "ទូទៅ"
+            draft.revision += 1
+            draft.current_step = "review"
             storage.save_draft(user_key, draft)
-            navigation.go_to(user_key, Screens.FORMAT_SELECTION, draft_id=draft.id)
+            navigation.go_to(user_key, Screens.DRAFT_REVIEW, draft_id=draft.id)
 
-            from app.views import render_format_selection
-            from app.keyboards import get_format_selection_keyboard
+            settings = storage.get_settings(user_key)
+            from app.views import render_review
+            from app.keyboards import get_review_keyboard
+            from app.telegram_io import safe_reply
 
-            notice = (
-                f"✅ *បានកំណត់វិស័យផ្ទាល់ខ្លួន៖* `{custom_niche}`\n"
-                "_(សេចក្ដីព្រាងចាស់ដែលមិនត្រូវគ្នាត្រូវបានជម្រះ ប៉ុន្តែ Script ជោគជ័យត្រូវបានរក្សាទុកដដែល)_\n\n"
-            )
-            msg = notice + render_format_selection(custom_niche)
-            keyboard = get_format_selection_keyboard(draft)
+            msg = render_review(draft, settings["pace"])
+            keyboard = get_review_keyboard(draft)
             await safe_reply(update.message, msg, reply_markup=keyboard)
             return
 
-    # 1. State: Entering Topic for Draft (Flexible across input screens with database draft recovery)
-    active_screens = (
-        Screens.TOPIC_INPUT,
-        Screens.TOPIC_OR_IDEAS,
-        Screens.FORMAT_SELECTION,
-        Screens.IDEA_RESULTS,
-        Screens.COMEDY_STYLE,
-        Screens.COMEDY_ACTORS,
-    )
-    draft = storage.get_draft(state.draft_id) if state.draft_id else storage.get_latest_draft(user_key)
-    if draft and not state.draft_id:
-        state.draft_id = draft.id
-
-    is_entering_topic = (
-        (state.current_screen in active_screens)
-        or (draft and not draft.topic and draft.current_step in ("topic", "topic_or_ideas", "comedy_style", "comedy_actors", "format"))
-    )
-
-    if is_entering_topic:
-        if not draft:
-            niche = storage.get_user_niche(user_key) or "ទូទៅ"
-            draft = Draft(
-                id=f"d_{uuid.uuid4().hex[:8]}",
-                revision=1,
-                format_id="3whs",
-                topic="",
-                duration_seconds=60,
-                audience="",
-                current_step="topic",
-                owner=user_key,
-                niche=niche,
-            )
-        draft.topic = user_text.strip()
-        draft.audience = user_text.strip()
-        if not draft.niche:
-            draft.niche = storage.get_user_niche(user_key) or "ទូទៅ"
-        draft.revision += 1
-        draft.current_step = "review"
-        storage.save_draft(user_key, draft)
-        navigation.go_to(user_key, Screens.DRAFT_REVIEW, draft_id=draft.id)
-
-        settings = storage.get_settings(user_key)
-        from app.views import render_review
-        from app.keyboards import get_review_keyboard
-        from app.telegram_io import safe_reply
-
-        msg = render_review(draft, settings["pace"])
-        keyboard = get_review_keyboard(draft)
-        await safe_reply(update.message, msg, reply_markup=keyboard)
-        return
-
-    # 2. State: Entering Pace Seconds
-    elif state.current_screen == Screens.PACE_SECONDS:
-        await handle_pace_seconds_input(update, context, user_text)
-        return
-
-    # 3. Default: Free-text AI Chat Coach
-    token = None
-    if hasattr(task_mgr, "start_request"):
-        import asyncio
-        res = task_mgr.start_request(user_key, "chat")
-        token = await res if asyncio.iscoroutine(res) else res
-    if token is None:
-        await update.message.reply_text("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!")
-        return
-
-    try:
-        await update.message.chat.send_action("typing")
-        response = await ai.chat(user_text)
-        if not hasattr(task_mgr, "is_current_request") or task_mgr.is_current_request(user_key, token):
-            await safe_reply(update.message, response)
-    finally:
-        if hasattr(task_mgr, "finish_request"):
+        # 3. Default: Free-text AI Chat Coach
+        token = None
+        if hasattr(task_mgr, "start_request"):
             import asyncio
-            fin_res = task_mgr.finish_request(user_key, token)
-            if asyncio.iscoroutine(fin_res):
-                await fin_res
+            res = task_mgr.start_request(user_key, "chat")
+            token = await res if asyncio.iscoroutine(res) else res
+        if token is None:
+            await update.message.reply_text("⏳ Bot កំពុងដំណើរការសំណើមុន... សូមរង់ចាំមួយភ្លែត!")
+            return
+
+        try:
+            try:
+                await update.message.chat.send_action("typing")
+            except Exception:
+                pass
+            response = await ai.chat(user_text)
+            if not hasattr(task_mgr, "is_current_request") or task_mgr.is_current_request(user_key, token):
+                from app.telegram_io import safe_reply
+                await safe_reply(update.message, response)
+        finally:
+            if hasattr(task_mgr, "finish_request"):
+                import asyncio
+                fin_res = task_mgr.finish_request(user_key, token)
+                if asyncio.iscoroutine(fin_res):
+                    await fin_res
+
+    except Exception as e:
+        logger.error(f"Error handling text message: {e}", exc_info=True)
+        try:
+            from app.keyboards import get_main_menu_keyboard
+            await update.message.reply_text(
+                "⚠️ មានបញ្ហាបច្ចេកទេសបន្តិចបន្តួច។ សូមចុច /start ឬជ្រើសរើស Menu ឡើងវិញ!",
+                reply_markup=get_main_menu_keyboard(),
+            )
+        except Exception:
+            pass
 
 # ─────────────────────────────────────────────
 # Callback Query Dispatcher
@@ -453,6 +481,7 @@ def main():
 
     # Initialize storage and AI service
     storage = Storage(db_path=config.db_path)
+    navigation.set_storage(storage)
     ai = AIService()
 
     # Build Telegram application with concurrent_updates(True)

@@ -91,5 +91,31 @@ class TestNavigation(unittest.TestCase):
         state = self.nav.get_state(self.user1)
         self.assertLessEqual(len(state.screen_history), 20)
 
+    def test_navigation_persists_across_restarts_via_storage(self):
+        """Navigation state survives restart when storage backend is attached."""
+        import tempfile
+        import os
+        from app.storage import Storage
+
+        temp_dir = tempfile.TemporaryDirectory()
+        db_path = os.path.join(temp_dir.name, "test_nav.sqlite3")
+        try:
+            storage = Storage(db_path=db_path)
+            nav = NavigationManager(storage=storage)
+
+            # User goes to TOPIC_INPUT
+            nav.go_to(self.user1, Screens.TOPIC_INPUT, draft_id="draft_abc", script_id="s_123", script_version=2)
+
+            # Simulate complete server restart (new NavigationManager instance)
+            new_nav = NavigationManager(storage=storage)
+            restored = new_nav.get_state(self.user1)
+
+            self.assertEqual(restored.current_screen, Screens.TOPIC_INPUT)
+            self.assertEqual(restored.draft_id, "draft_abc")
+            self.assertEqual(restored.selected_script_id, "s_123")
+            self.assertEqual(restored.selected_script_version, 2)
+        finally:
+            temp_dir.cleanup()
+
 if __name__ == "__main__":
     unittest.main()

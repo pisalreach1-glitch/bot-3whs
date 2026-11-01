@@ -36,6 +36,7 @@ from app.models import (
     EvidenceRecord,
     Idea,
     ScriptPlan,
+    NavigationState,
 )
 
 logger = logging.getLogger(__name__)
@@ -179,6 +180,19 @@ class Storage:
                     user_id INTEGER NOT NULL,
                     is_active INTEGER NOT NULL,
                     subscribed_at TEXT NOT NULL,
+                    PRIMARY KEY (chat_id, user_id)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS navigation_states (
+                    chat_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    current_screen TEXT NOT NULL,
+                    screen_history_json TEXT NOT NULL,
+                    draft_id TEXT,
+                    selected_script_id TEXT,
+                    selected_script_version INTEGER,
+                    updated_at TEXT NOT NULL,
                     PRIMARY KEY (chat_id, user_id)
                 )
             """)
@@ -677,6 +691,48 @@ class Storage:
             cursor = conn.cursor()
             cursor.execute("SELECT chat_id, user_id FROM subscriptions WHERE is_active = 1")
             return [UserKey(row["chat_id"], row["user_id"]) for row in cursor.fetchall()]
+
+    # ─────────────────────────────────────────────
+    # Navigation State Operations (Persistence across restarts)
+    # ─────────────────────────────────────────────
+    def save_navigation_state(self, user_key: UserKey, state: NavigationState):
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO navigation_states
+                (chat_id, user_id, current_screen, screen_history_json, draft_id, selected_script_id, selected_script_version, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                user_key.chat_id,
+                user_key.user_id,
+                state.current_screen,
+                json.dumps(state.screen_history),
+                state.draft_id,
+                state.selected_script_id,
+                state.selected_script_version,
+                now_iso,
+            ))
+            conn.commit()
+
+    def get_navigation_state(self, user_key: UserKey) -> Optional[NavigationState]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM navigation_states WHERE chat_id = ? AND user_id = ?", (user_key.chat_id, user_key.user_id))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            try:
+                hist = json.loads(row["screen_history_json"])
+            except Exception:
+                hist = []
+            return NavigationState(
+                current_screen=row["current_screen"],
+                screen_history=hist,
+                draft_id=row["draft_id"],
+                selected_script_id=row["selected_script_id"],
+                selected_script_version=row["selected_script_version"],
+            )
 
 default_storage = Storage()
 
