@@ -263,8 +263,9 @@ def apply_hook_option(
     sc1.estimated_spoken_seconds = est_s
     sc1.is_dialogue_too_long = bool(est_s > avail_s)
 
-    # If dialogue is excessively long (> 1.8x available scene time), preserve original!
-    if est_s > (avail_s * 1.8):
+    # If dialogue is excessively long (> 1.8x available scene time and > 12s), preserve original!
+    max_allowed_s = max(avail_s * 1.8, 12.0)
+    if est_s > max_allowed_s:
         return GenerationResult(
             success=False,
             error_code=ErrorCodes.INVALID_TIMELINE,

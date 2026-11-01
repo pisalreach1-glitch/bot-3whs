@@ -7,6 +7,7 @@ Guarantees:
 - Stale or invalid buttons fail safely without altering other scripts.
 """
 
+import re
 import uuid
 import logging
 from telegram import Update
@@ -200,7 +201,48 @@ async def handle_hook_pick_callback(update: Update, context: ContextTypes.DEFAUL
 
     opts_data = storage.get_hook_options(options_token)
     if not opts_data:
-        await query.answer("⚠️ ជម្រើស Hook នេះផុតសុពលភាពហើយ។", show_alert=True)
+        # Auto-recover hooks from message text if server restarted or container was recreated
+        msg_text = query.message.text or ""
+        recovered_hooks = []
+        blocks = re.split(r"(?=(?:✨|⚠️|🎯|🔹|👉|\*+)\s*\*+ជម្រើសទី|\bជម្រើសទី\s*[\d១២៣])", msg_text)
+        valid_blocks = [b.strip() for b in blocks if "ជម្រើសទី" in b]
+        types = ["Curiosity Hook", "Warning Hook", "Direct Value Hook"]
+
+        for idx, block in enumerate(valid_blocks[:3]):
+            h_type = types[idx] if idx < len(types) else f"Hook {idx+1}"
+            spoken = ""
+            visual = ""
+            for line in block.splitlines():
+                line_str = line.strip()
+                if "🗣️" in line_str or "ពាក្យនិយាយ" in line_str:
+                    cleaned = re.sub(r"^.*?🗣️\s*", "", line_str)
+                    cleaned = re.sub(r"^\*+ពាក្យនិយាយ[^\*]*\*+[:៖]*\s*", "", cleaned)
+                    cleaned = re.sub(r"^ពាក្យនិយាយ[^\n:៖]*[:៖]+\s*", "", cleaned)
+                    cleaned = cleaned.strip(" :៖*\"“”«»[]")
+                    if cleaned:
+                        spoken = cleaned
+                elif "🎥" in line_str or "កាយវិការ" in line_str:
+                    cleaned = re.sub(r"^.*?🎥\s*", "", line_str)
+                    cleaned = re.sub(r"^\*+កាយវិការ[^\*]*\*+[:៖]*\s*", "", cleaned)
+                    cleaned = re.sub(r"^កាយវិការ[^\n:៖]*[:៖]+\s*", "", cleaned)
+                    cleaned = cleaned.strip(" :៖*\"“”«»[]")
+                    if cleaned:
+                        visual = cleaned
+
+            if spoken:
+                recovered_hooks.append({
+                    "type": h_type,
+                    "spoken_text": spoken,
+                    "visual": visual,
+                })
+
+        last_script = storage.get_last_successful_script(user_key)
+        if last_script and recovered_hooks:
+            storage.save_hook_options(options_token, last_script.id, last_script.version, recovered_hooks)
+            opts_data = storage.get_hook_options(options_token)
+
+    if not opts_data:
+        await query.answer("⚠️ ជម្រើស Hook នេះផុតសុពលភាពហើយ។ សូមចុច 'ត្រឡប់ទៅ Script' រួចសុំ Hook ថ្មី!", show_alert=True)
         return
 
     script_id = opts_data["script_id"]
@@ -213,4 +255,4 @@ async def handle_hook_pick_callback(update: Update, context: ContextTypes.DEFAUL
         msg = f"✅ *បានអនុវត្តជម្រើស Hook ទី {opt_idx} ជោគជ័យ!* (បង្កើតជាកំណែទី {res.script.version})\n\n" + render_script_summary(res.script, settings["pace"])
         await safe_edit(query, msg, reply_markup=get_script_actions_keyboard(res.script))
     else:
-        await safe_reply(query.message, res.user_message_km)
+        await query.answer(res.user_message_km or "⚠️ មិនអាចប្តូរ Hook បានឡើយ។", show_alert=True)
