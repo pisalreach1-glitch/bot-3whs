@@ -181,7 +181,7 @@ async def handle_script_action_callback(update: Update, context: ContextTypes.DE
                 return
             navigation.go_to(user_key, Screens.HOOK_OPTIONS, script_id=script_id, script_version=version)
             msg = render_hook_options(script, hooks)
-            kb = get_hook_options_keyboard(opt_token, len(hooks))
+            kb = get_hook_options_keyboard(opt_token, len(hooks), script_id=script_id, version=version)
             await safe_edit(status_msg, msg, reply_markup=kb)
         finally:
             await task_mgr.finish_request(user_key, token)

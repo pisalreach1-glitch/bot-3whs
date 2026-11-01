@@ -233,7 +233,7 @@ def get_ideas_keyboard(batch_token: str, idea_count: int = 3) -> InlineKeyboardM
     ])
     return InlineKeyboardMarkup(keyboard)
 
-def get_hook_options_keyboard(options_token: str, hook_count: int = 3) -> InlineKeyboardMarkup:
+def get_hook_options_keyboard(options_token: str, hook_count: int = 3, script_id: str = "", version: int = 1) -> InlineKeyboardMarkup:
     """Keyboard for selecting one of 3 alternative hooks."""
     keyboard = [
         [
@@ -243,11 +243,15 @@ def get_hook_options_keyboard(options_token: str, hook_count: int = 3) -> Inline
         [
             InlineKeyboardButton("🎣 យក Hook ទី ៣", callback_data=encode_hook_pick(options_token, 3)),
         ],
-        [
-            InlineKeyboardButton("⬅️ ត្រឡប់ក្រោយ", callback_data=encode_nav("back")),
-            InlineKeyboardButton("🏠 Menu", callback_data=encode_nav("home")),
-        ],
     ]
+    if script_id:
+        keyboard.append([
+            InlineKeyboardButton("🔄 សុំ ៣ ជម្រើសថ្មីទៀត", callback_data=encode_script_action(script_id, version, "hooks")),
+        ])
+    keyboard.append([
+        InlineKeyboardButton("⬅️ ត្រឡប់ទៅ Script", callback_data=encode_nav("back")),
+        InlineKeyboardButton("🏠 Menu", callback_data=encode_nav("home")),
+    ])
     return InlineKeyboardMarkup(keyboard)
 
 def get_settings_keyboard(current_duration: str, is_subbed: bool) -> InlineKeyboardMarkup:
