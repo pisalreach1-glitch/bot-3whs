@@ -193,7 +193,7 @@ def get_script_actions_keyboard(
 
     extra_row = []
     if has_cached_hooks:
-        extra_row.append(InlineKeyboardButton("🎣 ជម្រើស Hook ទាំង ៣", callback_data=encode_script_action(sid, ver, "hooks_view")))
+        extra_row.append(InlineKeyboardButton("🎣 ជម្រើស Hook ទាំង ៨", callback_data=encode_script_action(sid, ver, "hooks_view")))
     if ver > 1:
         extra_row.append(InlineKeyboardButton(f"⏪ កំណែមុន (v{ver-1})", callback_data=encode_script_action(sid, ver, "prev_ver")))
 
@@ -253,20 +253,21 @@ def get_ideas_keyboard(batch_token: str, idea_count: int = 3) -> InlineKeyboardM
     ])
     return InlineKeyboardMarkup(keyboard)
 
-def get_hook_options_keyboard(options_token: str, hook_count: int = 3, script_id: str = "", version: int = 1) -> InlineKeyboardMarkup:
-    """Keyboard for selecting one of 3 alternative hooks."""
-    keyboard = [
-        [
-            InlineKeyboardButton("🎣 យក Hook ទី ១", callback_data=encode_hook_pick(options_token, 1)),
-            InlineKeyboardButton("🎣 យក Hook ទី ២", callback_data=encode_hook_pick(options_token, 2)),
-        ],
-        [
-            InlineKeyboardButton("🎣 យក Hook ទី ៣", callback_data=encode_hook_pick(options_token, 3)),
-        ],
-    ]
+def get_hook_options_keyboard(options_token: str, hook_count: int = 8, script_id: str = "", version: int = 1) -> InlineKeyboardMarkup:
+    """Keyboard for selecting one of alternative hooks (dynamically lays out in rows of 2)."""
+    keyboard = []
+    row = []
+    for idx in range(1, hook_count + 1):
+        row.append(InlineKeyboardButton(f"🎣 យក Hook ទី {idx}", callback_data=encode_hook_pick(options_token, idx)))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+
     if script_id:
         keyboard.append([
-            InlineKeyboardButton("🔄 សុំ ៣ ជម្រើសថ្មីទៀត", callback_data=encode_script_action(script_id, version, "hooks")),
+            InlineKeyboardButton(f"🔄 សុំ {hook_count} ជម្រើសថ្មីទៀត", callback_data=encode_script_action(script_id, version, "hooks")),
         ])
     keyboard.append([
         InlineKeyboardButton("⬅️ ត្រឡប់ទៅ Script", callback_data=encode_nav("back")),

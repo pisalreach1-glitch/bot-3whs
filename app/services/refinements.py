@@ -166,14 +166,41 @@ async def generate_hook_options(
     if ai._is_error_response(raw_response):
         return None, [], raw_response
 
-    # Parse 3 options flexibly
+    # Parse up to 8 options flexibly
     hooks: List[dict] = []
-    blocks = re.split(r"(?=(?:✨|⚠️|🎯|🔹|👉|\*+)\s*\*+ជម្រើសទី|\bជម្រើសទី\s*[\d១២៣])", raw_response)
+    blocks = re.split(r"(?=(?:✨|⚠️|🎯|😣|📖|⚡|🏆|🤝|🔹|👉|\*+)\s*\*+ជម្រើសទី|\bជម្រើសទី\s*(?:\d+|[១២៣៤៥៦៧៨]))", raw_response)
     valid_blocks = [b.strip() for b in blocks if "ជម្រើសទី" in b]
 
-    types = ["Curiosity Hook", "Warning Hook", "Direct Value Hook"]
-    for idx, block in enumerate(valid_blocks[:3]):
-        h_type = types[idx] if idx < len(types) else f"Hook {idx+1}"
+    HOOK_TYPES = [
+        "Curiosity Hook",
+        "Warning Hook",
+        "Direct Value Hook",
+        "Problem / Pain Hook",
+        "Story Hook",
+        "Contrarian Hook",
+        "Result / Proof Hook",
+        "Relatable Hook",
+    ]
+
+    default_hooks = [
+        ("តើអ្នកដឹងទេថា កំហុសមួយនេះធ្វើឱ្យមនុស្សភាគច្រើនខាតបង់?", "ចង្អុលកាមេរ៉ា"),
+        ("ឈប់ធ្វើបែបនេះភ្លាម ប្រសិនបើអ្នកមិនចង់ស្តាយក្រោយ!", "កាយវិការហាម"),
+        ("នេះជាវិធីងាយៗ ៣ យ៉ាងជួយដោះស្រាយបញ្ហារបស់អ្នកភ្លាមៗ!", "ទឹកមុខជឿជាក់"),
+        ("អ្នកកំពុងជួបបញ្ហាពិបាកដោះស្រាយមួយនេះមែនទេ?", "ទឹកមុខយល់ចិត្ត"),
+        ("កាលពីមុន ខ្ញុំធ្លាប់គិតថារឿងនេះមិនអាចទៅរួចឡើយ...", "ប្លង់ POV ដើរ"),
+        ("មនុស្សភាគច្រើនយល់ច្រឡំ តែការពិតគឺផ្ទុយស្រឡះ!", "ទឹកមុខភ្ញាក់ផ្អើល"),
+        ("មើលលទ្ធផលជាក់ស្ដែងនេះចុះ ធ្វើបានពិតៗក្នុងពេលតែ ៣ ថ្ងៃ!", "បង្ហាញលទ្ធផល"),
+        ("អ្នកណាខ្លះធ្លាប់ជួបស្ថានភាពបែបនេះដូចខ្ញុំដែរ?", "ញញឹមងក់ក្បាល"),
+    ]
+
+    for idx, block in enumerate(valid_blocks[:8]):
+        # Detect hook type if present in block text
+        detected_type = None
+        for ht in HOOK_TYPES:
+            if ht.lower() in block.lower():
+                detected_type = ht
+                break
+        h_type = detected_type or (HOOK_TYPES[idx] if idx < len(HOOK_TYPES) else f"Hook {idx+1}")
         
         spoken = ""
         visual = ""
@@ -196,11 +223,6 @@ async def generate_hook_options(
 
         # Reject placeholder text
         if not spoken or "ជម្រើស Hook ទី" in spoken or "ពាក្យបង្កចម្ងល់" in spoken or "ការដាស់តឿន" in spoken:
-            default_hooks = [
-                ("តើអ្នកដឹងទេថា កំហុសមួយនេះធ្វើឱ្យមនុស្សភាគច្រើនខាតបង់?", "ចង្អុលកាមេរ៉ា"),
-                ("ឈប់ធ្វើបែបនេះភ្លាម ប្រសិនបើអ្នកមិនចង់ស្តាយក្រោយ!", "កាយវិការហាម"),
-                ("នេះជាវិធីងាយៗ ៣ យ៉ាងជួយដោះស្រាយបញ្ហារបស់អ្នកភ្លាមៗ!", "ទឹកមុខជឿជាក់"),
-            ]
             fallback_text, fallback_vis = default_hooks[idx] if idx < len(default_hooks) else default_hooks[0]
             spoken = spoken if (spoken and "ជម្រើស Hook ទី" not in spoken) else fallback_text
             visual = visual or fallback_vis
@@ -214,9 +236,8 @@ async def generate_hook_options(
     if not hooks:
         # Fallback parsing
         hooks = [
-            {"type": "Curiosity Hook", "spoken_text": "តើអ្នកដឹងទេថា កំហុសមួយនេះធ្វើឱ្យមនុស្សភាគច្រើនខាតបង់?", "visual": "ចង្អុលកាមេរ៉ា"},
-            {"type": "Warning Hook", "spoken_text": "ឈប់ធ្វើបែបនេះភ្លាម ប្រសិនបើអ្នកមិនចង់ស្តាយក្រោយ!", "visual": "កាយវិការហាម"},
-            {"type": "Direct Value Hook", "spoken_text": "នេះជាវិធីងាយៗ ៣ យ៉ាងជួយដោះស្រាយបញ្ហារបស់អ្នកភ្លាមៗ!", "visual": "ទឹកមុខជឿជាក់"},
+            {"type": HOOK_TYPES[i], "spoken_text": default_hooks[i][0], "visual": default_hooks[i][1]}
+            for i in range(len(HOOK_TYPES))
         ]
 
     token = f"h_{uuid.uuid4().hex[:8]}"

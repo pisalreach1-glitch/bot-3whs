@@ -383,12 +383,24 @@ def render_script_caption(script: SavedScript) -> str:
 
 def render_hook_options(script: SavedScript, hooks: List[dict]) -> str:
     lines = [
-        "🎣 *ជម្រើស Hook ថ្មីទាំង ៣ បែប*",
+        f"🎣 *ជម្រើស Hook ថ្មីទាំង {len(hooks)} បែប*",
         f"📜 _សម្រាប់ Script: {script.plan.title} (កំណែ {script.version})_",
         "━━━━━━━━━━━━━━━━━━━━━\n",
     ]
+    type_emojis = {
+        "Curiosity Hook": "✨",
+        "Warning Hook": "⚠️",
+        "Direct Value Hook": "🎯",
+        "Problem / Pain Hook": "😣",
+        "Story Hook": "📖",
+        "Contrarian Hook": "⚡",
+        "Result / Proof Hook": "🏆",
+        "Relatable Hook": "🤝",
+    }
     for idx, h in enumerate(hooks, start=1):
-        lines.append(f"✨ *ជម្រើសទី {idx} ({h.get('type', 'Hook')}):*")
+        h_type = h.get('type', f'Hook {idx}')
+        emoji = type_emojis.get(h_type, "✨")
+        lines.append(f"{emoji} *ជម្រើសទី {idx} ({h_type}):*")
         lines.append(f"🗣️ *ពាក្យនិយាយ*: \"{h.get('spoken_text', '')}\"")
         if h.get('visual'):
             lines.append(f"🎥 *Visual/កាយវិការ*: {h.get('visual')}")

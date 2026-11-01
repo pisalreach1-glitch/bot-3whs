@@ -196,7 +196,7 @@ async def handle_script_action_callback(update: Update, context: ContextTypes.DE
             return
         await query.answer("🎣 កំពុងបង្កើតជម្រើស Hook ថ្មី...")
         status_msg = await query.message.reply_text(
-            "🎣 *កំពុងរៀបចំជម្រើស Hook ថ្មីទាំង ៣ បែប...*\nសូមរង់ចាំមួយភ្លែត...",
+            "🎣 *កំពុងរៀបចំជម្រើស Hook ថ្មីទាំង ៨ បែប...*\nសូមរង់ចាំមួយភ្លែត...",
             parse_mode="Markdown",
             reply_markup=get_cancel_processing_keyboard(f"hooks_{script_id}"),
         )
@@ -250,12 +250,26 @@ async def handle_hook_pick_callback(update: Update, context: ContextTypes.DEFAUL
         # Auto-recover hooks from message text if server restarted or container was recreated
         msg_text = query.message.text or ""
         recovered_hooks = []
-        blocks = re.split(r"(?=(?:✨|⚠️|🎯|🔹|👉|\*+)\s*\*+ជម្រើសទី|\bជម្រើសទី\s*[\d១២៣])", msg_text)
+        blocks = re.split(r"(?=(?:✨|⚠️|🎯|😣|📖|⚡|🏆|🤝|🔹|👉|\*+)\s*\*+ជម្រើសទី|\bជម្រើសទី\s*(?:\d+|[១២៣៤៥៦៧៨]))", msg_text)
         valid_blocks = [b.strip() for b in blocks if "ជម្រើសទី" in b]
-        types = ["Curiosity Hook", "Warning Hook", "Direct Value Hook"]
+        types = [
+            "Curiosity Hook",
+            "Warning Hook",
+            "Direct Value Hook",
+            "Problem / Pain Hook",
+            "Story Hook",
+            "Contrarian Hook",
+            "Result / Proof Hook",
+            "Relatable Hook",
+        ]
 
-        for idx, block in enumerate(valid_blocks[:3]):
-            h_type = types[idx] if idx < len(types) else f"Hook {idx+1}"
+        for idx, block in enumerate(valid_blocks[:8]):
+            detected_type = None
+            for ht in types:
+                if ht.lower() in block.lower():
+                    detected_type = ht
+                    break
+            h_type = detected_type or (types[idx] if idx < len(types) else f"Hook {idx+1}")
             spoken = ""
             visual = ""
             for line in block.splitlines():

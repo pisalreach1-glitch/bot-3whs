@@ -306,10 +306,87 @@ class TestRefinements(unittest.TestCase):
         # Keyboard for v2 with storage provided: both buttons appear
         kb_v2 = get_script_actions_keyboard(script_v2, storage=self.storage)
         v2_texts = [btn.text for row in kb_v2.inline_keyboard for btn in row]
-        self.assertIn("🎣 ជម្រើស Hook ទាំង ៣", v2_texts)
+        self.assertIn("🎣 ជម្រើស Hook ទាំង ៨", v2_texts)
         self.assertIn("⏪ កំណែមុន (v1)", v2_texts)
         self.assertIn("⬅️ ត្រឡប់ក្រោយ", v2_texts)
         self.assertIn("🏠 Menu", v2_texts)
+
+    def test_eight_hook_options_generation_and_rendering(self):
+        """Verifies all 8 hook types (Curiosity, Warning, Direct Value, Problem/Pain, Story, Contrarian, Result/Proof, Relatable) are parsed and rendered."""
+        from app.views import render_hook_options
+        from app.keyboards import get_hook_options_keyboard
+
+        eight_hooks_response = """
+✨ **ជម្រើសទី ១ (Curiosity Hook — ជំរុញឱ្យចង់ដឹងចង់ឃើញ):**
+🗣️ **ពាក្យនិយាយ:** "ហេតុអ្វីបានជាអ្នកលក់ ៩០% បរាជ័យក្នុងខែដំបូង?"
+🎥 **កាយវិការ/Visual:** លើកចិញ្ចើម សម្លឹងកាមេរ៉ា
+
+⚠️ **ជម្រើសទី ២ (Warning Hook — ការដាស់តឿន/កុំអាលធ្វើបែបនេះ):**
+🗣️ **ពាក្យនិយាយ:** "កុំអាលចំណាយលុយលើការផ្សាយពាណិជ្ជកម្ម បើមិនទាន់ដឹងរឿងនេះ!"
+🎥 **កាយវិការ/Visual:** លើកដៃហាម
+
+🎯 **ជម្រើសទី ៣ (Direct Value Hook — ផ្ដល់ផលប្រយោជន៍ចំៗភ្លាមៗ):**
+🗣️ **ពាក្យនិយាយ:** "នេះជារូបមន្ត ៣ ជំហានជួយឱ្យអ្នករកចំណូលបានភ្លាមៗ!"
+🎥 **កាយវិការ/Visual:** បង្ហាញកាតាឡុក ឬទំនិញ
+
+😣 **ជម្រើសទី ៤ (Problem / Pain Hook — ចាប់ផ្តើមពីបញ្ហាអ្នកមើល):**
+🗣️ **ពាក្យនិយាយ:** "ខំផុសវីដេអូរាល់ថ្ងៃតែគ្មានអ្នកមើលមែនទេ? ឈឺចាប់ណាស់!"
+🎥 **កាយវិការ/Visual:** ទឹកមុខពិបាកចិត្ត ចង្អុលទូរស័ព្ទ
+
+📖 **ជម្រើសទី ៥ (Story Hook — បើកដោយសាច់រឿង):**
+🗣️ **ពាក្យនិយាយ:** "កាលពី ២ ឆ្នាំមុន ខ្ញុំធ្លាប់ជំពាក់បំណុលគេវណ្ឌក..."
+🎥 **កាយវិការ/Visual:** ប្លង់ POV អង្គុយសញ្ជឹងគិត
+
+⚡ **ជម្រើសទី ៦ (Contrarian Hook — បង្ហាញមុំផ្ទុយពីការយល់ទូទៅ):**
+🗣️ **ពាក្យនិយាយ:** "អ្នកណាថារកស៊ីត្រូវតែមានដើមទុនច្រើន? យល់ខុសហើយ!"
+🎥 **កាយវិការ/Visual:** គ្រវីក្បាល ទឹកមុខមានទំនុកចិត្ត
+
+🏆 **ជម្រើសទី ៧ (Result / Proof Hook — បើកដោយលទ្ធផល ឬការបង្ហាញជាក់ស្តែង):**
+🗣️ **ពាក្យនិយាយ:** "មើលតួលេខលក់ចេញ ៥០០ កញ្ចប់ត្រឹមតែមួយព្រឹកនេះចុះ!"
+🎥 **កាយវិការ/Visual:** បង្ហាញកញ្ចប់ទំនិញដែលខ្ចប់រួច
+
+🤝 **ជម្រើសទី ៨ (Relatable Hook — បើកពីបទពិសោធន៍ដែលអ្នកមើលស្គាល់):**
+🗣️ **ពាក្យនិយាយ:** "អ្នកណាខ្លះដល់ចុងខែម្តងៗ សល់លុយមិនដល់ ១០ ដុល្លារដូចខ្ញុំ?"
+🎥 **កាយវិការ/Visual:** ញញឹមស្ងួត លើកកាបូបលុយទទេរបង្ហាញ
+"""
+        ai_mock = MagicMock()
+        ai_mock._is_error_response = MagicMock(return_value=False)
+        ai_mock.generate_response = AsyncMock(return_value=eight_hooks_response)
+
+        async def _run():
+            token, hooks, err = await generate_hook_options(
+                user_key=self.user,
+                script_id="script_target",
+                version=1,
+                storage=self.storage,
+                ai=ai_mock,
+            )
+            self.assertIsNone(err)
+            self.assertEqual(len(hooks), 8)
+            self.assertEqual(hooks[0]["type"], "Curiosity Hook")
+            self.assertEqual(hooks[1]["type"], "Warning Hook")
+            self.assertEqual(hooks[2]["type"], "Direct Value Hook")
+            self.assertEqual(hooks[3]["type"], "Problem / Pain Hook")
+            self.assertEqual(hooks[4]["type"], "Story Hook")
+            self.assertEqual(hooks[5]["type"], "Contrarian Hook")
+            self.assertEqual(hooks[6]["type"], "Result / Proof Hook")
+            self.assertEqual(hooks[7]["type"], "Relatable Hook")
+
+            rendered_text = render_hook_options(self.script_v1, hooks)
+            self.assertIn("ជម្រើស Hook ថ្មីទាំង 8 បែប", rendered_text)
+            self.assertIn("Problem / Pain Hook", rendered_text)
+            self.assertIn("Story Hook", rendered_text)
+            self.assertIn("Contrarian Hook", rendered_text)
+            self.assertIn("Result / Proof Hook", rendered_text)
+            self.assertIn("Relatable Hook", rendered_text)
+
+            kb = get_hook_options_keyboard(token, len(hooks), script_id="script_target", version=1)
+            btn_texts = [btn.text for row in kb.inline_keyboard for btn in row]
+            for i in range(1, 9):
+                self.assertIn(f"🎣 យក Hook ទី {i}", btn_texts)
+            self.assertIn("🔄 សុំ 8 ជម្រើសថ្មីទៀត", btn_texts)
+
+        asyncio.run(_run())
 
     def test_storage_get_latest_hook_options(self):
         """Storage retrieves the most recently created hook options for a script."""
