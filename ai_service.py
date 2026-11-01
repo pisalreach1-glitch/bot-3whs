@@ -96,13 +96,13 @@ class AIService:
             "last_status": getattr(self, "last_api_status", "ធម្មតា"),
         }
 
-    async def _generate_with_model(self, model_name: str, prompt: str, is_json: bool = False) -> str:
+    async def _generate_with_model(self, model_name: str, prompt: str, is_json: bool = False, temperature: float = 0.7) -> str:
         """Native async SDK generation call without thread-offload leaks."""
         if self.sdk_type == "google-genai":
             from google.genai import types
             config_kwargs = {
                 "system_instruction": SYSTEM_INSTRUCTION,
-                "temperature": 0.7,
+                "temperature": temperature,
             }
             try:
                 config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
@@ -151,7 +151,7 @@ class AIService:
         else:
             raise RuntimeError("No Gemini SDK configured")
 
-    async def generate_response(self, prompt: str, is_json: bool = False) -> str:
+    async def generate_response(self, prompt: str, is_json: bool = False, temperature: float = 0.7) -> str:
         """
         Generates response using native async SDK with bounded concurrency and transport timeout.
         Retries on transient 503 spikes, falls through exhausted models, and preserves quota.
@@ -179,7 +179,7 @@ class AIService:
                 for attempt in range(2):
                     try:
                         text = await asyncio.wait_for(
-                            self._generate_with_model(model_name, prompt, is_json),
+                            self._generate_with_model(model_name, prompt, is_json, temperature=temperature),
                             timeout=REQUEST_TIMEOUT_SECONDS
                         )
                         self.last_api_status = "🟢 ដំណើរការល្អ (Online)"
@@ -323,7 +323,7 @@ class AIService:
         This provides hook choices for the user and does NOT overwrite the full script.
         """
         prompt = get_refine_hook_prompt(last_script)
-        return await self.generate_response(prompt, is_json=False)
+        return await self.generate_response(prompt, is_json=False, temperature=0.85)
 
     async def chat(self, user_message: str) -> str:
         """Free-text chat with 3WHs AI Coach"""

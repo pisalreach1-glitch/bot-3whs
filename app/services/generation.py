@@ -88,8 +88,25 @@ async def execute_generation_request(
             ev_lines.append(f"• [{ev.id}] {ev.publisher}: {ev.title} ({ev.url})")
         prompt += f"\n\n[ប្រភពព័ត៌មានយោងពិតប្រាកដដែលបានស្រង់មក]:\n" + "\n".join(ev_lines)
 
+    # Add regeneration variety guidance
+    if request.operation == "regenerate":
+        prompt += """
+
+[ការណែនាំពិសេសសម្រាប់ការបង្កើត Script ឡើងវិញ (Fresh Creative Variation)]:
+- នេះជាកំណែបង្កើតឡើងវិញ (New Version) ដូច្នេះដាច់ខាតកុំប្រើរចនាសម្ព័ន្ធ ឬពាក្យពេចន៍ដដែលៗដូចកំណែមុន!
+- ប្តូរ Hook បើកក្បាលថ្មីទាំងស្រុងឱ្យកាន់តែទាក់ទាញ ចាក់ដោត និងរស់រវើក។
+- ប្រើវិធីតាក់តែងរឿង និងមុំមើលថ្មី (Fresh Storytelling Perspective) ដោយបន្ថែមឧទាហរណ៍ជាក់ស្តែង ឬចំណុចប្រៀបធៀបថ្មីដែលទាក់ទាញយុវវ័យខ្មែរ។
+- ជៀសវាងទម្រង់ឃ្លាទូទៅដដែលៗ។
+"""
+
     # 2. Call Gemini
-    raw_response = await ai.generate_response(prompt, is_json=True)
+    if request.operation == "regenerate":
+        try:
+            raw_response = await ai.generate_response(prompt, is_json=True, temperature=0.85)
+        except TypeError:
+            raw_response = await ai.generate_response(prompt, is_json=True)
+    else:
+        raw_response = await ai.generate_response(prompt, is_json=True)
 
     # Check for cancellation before processing result
     if not task_mgr.is_current_request(request.owner, token):

@@ -145,28 +145,65 @@ async def generate_hook_options(
         return None, [], "⚠️ រកមិនឃើញ Script ដើមឡើយ។"
 
     plan = script.plan
-    summary_text = f"Title: {plan.title}\nOpening: {plan.scenes[0].spoken_text_km if plan.scenes else ''}"
+    scene_bullets = []
+    for sc in (plan.scenes or [])[:4]:
+        if sc.spoken_text_km:
+            scene_bullets.append(f"- ប្លង់ទី {sc.scene_number}: {sc.spoken_text_km[:80]}")
+    scenes_overview = "\n".join(scene_bullets) if scene_bullets else "គ្មានព័ត៌មានប្លង់"
+    
+    summary_text = (
+        f"ចំណងជើង: {plan.title}\n"
+        f"ទស្សនិកជន: {plan.target_audience or 'ទូទៅ'}\n"
+        f"ខ្លឹមសារប្លង់សំខាន់ៗ:\n{scenes_overview}\n"
+        f"Hook បច្ចុប្បន្ន (ប្លង់ទី ១): {plan.scenes[0].spoken_text_km if plan.scenes else ''}"
+    )
     prompt = get_refine_hook_prompt(summary_text)
 
-    raw_response = await ai.generate_response(prompt, is_json=False)
+    try:
+        raw_response = await ai.generate_response(prompt, is_json=False, temperature=0.85)
+    except TypeError:
+        raw_response = await ai.generate_response(prompt, is_json=False)
     if ai._is_error_response(raw_response):
         return None, [], raw_response
 
-    # Parse 3 options
+    # Parse 3 options flexibly
     hooks: List[dict] = []
-    blocks = re.split(r"(?=✨\s*\*\*ជម្រើសទី|⚠️\s*\*\*ជម្រើសទី|🎯\s*\*\*ជម្រើសទី)", raw_response)
+    blocks = re.split(r"(?=(?:✨|⚠️|🎯|🔹|👉|\*+)\s*\*+ជម្រើសទី|\bជម្រើសទី\s*[\d១២៣])", raw_response)
     valid_blocks = [b.strip() for b in blocks if "ជម្រើសទី" in b]
 
     types = ["Curiosity Hook", "Warning Hook", "Direct Value Hook"]
     for idx, block in enumerate(valid_blocks[:3]):
         h_type = types[idx] if idx < len(types) else f"Hook {idx+1}"
-        speech_match = re.search(r"🗣️\s*\*\*ពាក្យនិយាយ\*\*[៖:\s]+\"([^\"]+)\"", block)
-        if not speech_match:
-            speech_match = re.search(r"🗣️\s*\*\*ពាក្យនិយាយ\*\*[៖:\s]+([^\n]+)", block)
-        visual_match = re.search(r"🎥\s*\*\*កាយវិការ[^\*]*\*\*[៖:\s]+([^\n]+)", block)
+        
+        spoken = ""
+        visual = ""
+        for line in block.splitlines():
+            line_str = line.strip()
+            if "🗣️" in line_str or "ពាក្យនិយាយ" in line_str:
+                cleaned = re.sub(r"^.*?🗣️\s*", "", line_str)
+                cleaned = re.sub(r"^\*+ពាក្យនិយាយ[^\*]*\*+[:៖]*\s*", "", cleaned)
+                cleaned = re.sub(r"^ពាក្យនិយាយ[^\n:៖]*[:៖]+\s*", "", cleaned)
+                cleaned = cleaned.strip(" :៖*\"“”«»[]")
+                if cleaned:
+                    spoken = cleaned
+            elif "🎥" in line_str or "កាយវិការ" in line_str:
+                cleaned = re.sub(r"^.*?🎥\s*", "", line_str)
+                cleaned = re.sub(r"^\*+កាយវិការ[^\*]*\*+[:៖]*\s*", "", cleaned)
+                cleaned = re.sub(r"^កាយវិការ[^\n:៖]*[:៖]+\s*", "", cleaned)
+                cleaned = cleaned.strip(" :៖*\"“”«»[]")
+                if cleaned:
+                    visual = cleaned
 
-        spoken = speech_match.group(1).strip() if speech_match else f"ជម្រើស Hook ទី {idx+1}"
-        visual = visual_match.group(1).strip() if visual_match else ""
+        # Reject placeholder text
+        if not spoken or "ជម្រើស Hook ទី" in spoken or "ពាក្យបង្កចម្ងល់" in spoken or "ការដាស់តឿន" in spoken:
+            default_hooks = [
+                ("តើអ្នកដឹងទេថា កំហុសមួយនេះធ្វើឱ្យមនុស្សភាគច្រើនខាតបង់?", "ចង្អុលកាមេរ៉ា"),
+                ("ឈប់ធ្វើបែបនេះភ្លាម ប្រសិនបើអ្នកមិនចង់ស្តាយក្រោយ!", "កាយវិការហាម"),
+                ("នេះជាវិធីងាយៗ ៣ យ៉ាងជួយដោះស្រាយបញ្ហារបស់អ្នកភ្លាមៗ!", "ទឹកមុខជឿជាក់"),
+            ]
+            fallback_text, fallback_vis = default_hooks[idx] if idx < len(default_hooks) else default_hooks[0]
+            spoken = spoken if (spoken and "ជម្រើស Hook ទី" not in spoken) else fallback_text
+            visual = visual or fallback_vis
 
         hooks.append({
             "type": h_type,

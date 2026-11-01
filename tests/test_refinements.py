@@ -212,6 +212,42 @@ class TestRefinements(unittest.TestCase):
     def test_hook_generation_and_safe_application(self):
         asyncio.run(self._async_test_hook_generation_and_safe_application())
 
+    def test_hook_parsing_with_colons_inside_asterisks_and_khmer_quotes(self):
+        """Ensures real-world Gemini output with colon inside asterisks and variations extracts actual spoken dialogue."""
+        ai_mock = MagicMock()
+        ai_mock._is_error_response = MagicMock(return_value=False)
+        ai_mock.generate_response = AsyncMock(return_value="""
+✨ **ជម្រើសទី ១ (Curiosity Hook — ជំរុញឱ្យចង់ដឹងចង់ឃើញ):**
+🗣️ **ពាក្យនិយាយ:** "ដើមទុនតិចមិនមែនជាបញ្ហា តែទីតាំងខុសគឺងាប់បាត់ទៅហើយ!"
+🎥 **កាយវិការ/Visual:** ប្លង់ Close-up មុខអ្នកនិយាយបែបម៉ឺងម៉ាត់
+
+⚠️ **ជម្រើសទី ២ (Warning / Negative Hook — ការព្រមាន ឬកំហុស):**
+🗣️ **ពាក្យនិយាយ:** «កុំអាលបើកលក់អាហារសម្រន់ឱ្យសោះ បើអ្នកមិនទាន់ដឹងច្បាប់ ៣ យ៉ាងនេះ!»
+🎥 **កាយវិការ/Visual:** ធ្វើកាយវិការលើកដៃសញ្ញា "ផ្អាក"
+
+🎯 **ជម្រើសទី ៣ (Direct Value Hook — ផ្ដល់ផលប្រយោជន៍ចំៗភ្លាមៗ):**
+🗣️ **ពាក្យនិយាយ:** ចង់ច្នៃមុខម្ហូបឱ្យល្បីពេញ TikTok និងចំណេញខ្ពស់មែនទេ?
+🎥 **កាយវិការ/Visual:** បង្ហាញមុខម្ហូបសម្រន់
+""")
+
+        async def _run():
+            token, hooks, err = await generate_hook_options(
+                user_key=self.user,
+                script_id="script_target",
+                version=1,
+                storage=self.storage,
+                ai=ai_mock,
+            )
+            self.assertIsNone(err)
+            self.assertEqual(len(hooks), 3)
+            self.assertEqual(hooks[0]["spoken_text"], "ដើមទុនតិចមិនមែនជាបញ្ហា តែទីតាំងខុសគឺងាប់បាត់ទៅហើយ!")
+            self.assertEqual(hooks[1]["spoken_text"], "កុំអាលបើកលក់អាហារសម្រន់ឱ្យសោះ បើអ្នកមិនទាន់ដឹងច្បាប់ ៣ យ៉ាងនេះ!")
+            self.assertEqual(hooks[2]["spoken_text"], "ចង់ច្នៃមុខម្ហូបឱ្យល្បីពេញ TikTok និងចំណេញខ្ពស់មែនទេ?")
+            for h in hooks:
+                self.assertNotIn("ជម្រើស Hook ទី", h["spoken_text"])
+
+        asyncio.run(_run())
+
     def test_view_switching_makes_zero_ai_calls(self):
         """All 4 script views render directly from SavedScript with 0 AI involvement."""
         ai_mock = MagicMock()
