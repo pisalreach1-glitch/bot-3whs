@@ -223,6 +223,16 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 await safe_reply(update.message, msg, reply_markup=keyboard)
                 return
 
+        # 0b. State: Entering Custom Niche for Ideas
+        if state.current_screen == Screens.IDEA_CUSTOM_INPUT:
+            custom_niche = user_text.strip()
+            if not custom_niche:
+                await update.message.reply_text("⚠️ សូមវាយបញ្ចូលឈ្មោះវិស័យរបស់អ្នក។")
+                return
+            storage.save_user_niche(user_key, custom_niche)
+            await start_ideas_flow(update, context, category=custom_niche)
+            return
+
         # 1. State: Entering Pace Seconds
         if state.current_screen == Screens.PACE_SECONDS:
             await handle_pace_seconds_input(update, context, user_text)
@@ -245,7 +255,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         is_entering_topic = (
             (state.current_screen in active_screens)
             or (draft and draft.current_step in ("topic", "topic_input", "topic_or_ideas", "comedy_style", "comedy_actors", "format"))
-            or (state.current_screen not in (Screens.PACE_SECONDS, Screens.SETTINGS, Screens.NICHE_CUSTOM_INPUT))
+            or (state.current_screen not in (Screens.PACE_SECONDS, Screens.SETTINGS, Screens.NICHE_CUSTOM_INPUT, Screens.IDEA_CUSTOM_INPUT))
         )
 
         if is_entering_topic:

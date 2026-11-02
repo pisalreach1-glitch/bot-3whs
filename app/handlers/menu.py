@@ -296,6 +296,18 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     # ── MENU: IDEAS CATEGORY SELECTED ─────────
     elif action == "ideacat" or action.startswith("ideacat"):
         cat_key = decoded.token or (action.split(":", 1)[1] if ":" in action else "cambodia")
+        if cat_key == "custom":
+            navigation.go_to(user_key, Screens.IDEA_CUSTOM_INPUT)
+            msg = (
+                "💡 *ស្វែងរកគំនិតមាតិកាតាមវិស័យផ្ទាល់ខ្លួន (Custom Niche Ideas)*\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "សូមវាយបញ្ចូលវិស័យ ឬមុខរបរផ្ទាល់ខ្លួនរបស់អ្នកផ្ញើមកកាន់ Bot៖\n\n"
+                "_ឧទាហរណ៍៖ សាលាបង្រៀនធ្វើម្ហូបអនឡាញ, ហាងលក់សម្លៀកបំពាក់ទាន់សម័យ, ហាងកាហ្វេ, អចលនទ្រព្យ, គ្លីនិកធ្មេញ..._\n\n"
+                "👉 _អ្នកអាចចុច ⬅️ ត្រឡប់ក្រោយ ឬ /cancel ដើម្បីបោះបង់!_"
+            )
+            await safe_edit(query, msg, reply_markup=get_back_home_keyboard())
+            return
+
         saved_niche = storage.get_user_niche(user_key)
         cat_map = {
             "cambodia": "🇰🇭 ព័ត៌មាន និងសង្គមកម្ពុជាថ្មីៗ",
@@ -480,6 +492,16 @@ async def render_current_screen(query, user_key: UserKey, screen: str, state, st
             "សូមវាយឈ្មោះវិស័យមាតិកាដែលអ្នកចង់ផលិតរួចផ្ញើមកកាន់ Bot៖\n\n"
             "_ឧទាហរណ៍៖ Khmer cooking, ទេសចរណ៍ និងដើរលេង, ហិរញ្ញវត្ថុផ្ទាល់ខ្លួន, សុខភាព..._\n\n"
             "💡 _អ្នកអាចចុច ⬅️ ត្រឡប់ក្រោយ ឬ /cancel ដើម្បីបោះបង់!_"
+        )
+        await safe_edit(query, msg, reply_markup=get_back_home_keyboard())
+
+    elif screen == Screens.IDEA_CUSTOM_INPUT:
+        msg = (
+            "💡 *ស្វែងរកគំនិតមាតិកាតាមវិស័យផ្ទាល់ខ្លួន (Custom Niche Ideas)*\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "សូមវាយបញ្ចូលវិស័យ ឬមុខរបរផ្ទាល់ខ្លួនរបស់អ្នកផ្ញើមកកាន់ Bot៖\n\n"
+            "_ឧទាហរណ៍៖ សាលាបង្រៀនធ្វើម្ហូបអនឡាញ, ហាងលក់សម្លៀកបំពាក់ទាន់សម័យ, ហាងកាហ្វេ, អចលនទ្រព្យ, គ្លីនិកធ្មេញ..._\n\n"
+            "👉 _អ្នកអាចចុច ⬅️ ត្រឡប់ក្រោយ ឬ /cancel ដើម្បីបោះបង់!_"
         )
         await safe_edit(query, msg, reply_markup=get_back_home_keyboard())
 

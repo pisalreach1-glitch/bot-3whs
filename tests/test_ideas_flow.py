@@ -191,6 +191,57 @@ class TestIdeasFlow(unittest.TestCase):
     def test_ideas_category_menu_callback(self):
         asyncio.run(self._async_test_ideas_category_menu_callback())
 
+    def test_ideas_category_custom_niche_prompt_and_input(self):
+        asyncio.run(self._async_test_ideas_category_custom_niche_prompt_and_input())
+
+    async def _async_test_ideas_category_custom_niche_prompt_and_input(self):
+        from app.handlers.menu import handle_menu_callback
+        from app.navigation import navigation, Screens
+        from bot import handle_text_message
+        from app.task_manager import TaskManager
+
+        # 1. Click ideacat:custom
+        mock_update = MagicMock()
+        mock_update.effective_chat.id = self.user.chat_id
+        mock_update.effective_user.id = self.user.user_id
+        mock_query = AsyncMock()
+        mock_query.data = "m:ideacat:custom"
+        mock_query.message = AsyncMock()
+        mock_update.callback_query = mock_query
+
+        mock_context = MagicMock()
+        mock_context.bot_data = {
+            "storage": self.storage,
+            "ai": MagicMock(),
+            "task_mgr": TaskManager(),
+        }
+
+        with patch("app.handlers.menu.get_user_key", return_value=self.user):
+            await handle_menu_callback(mock_update, mock_context)
+
+        state = navigation.get_state(self.user)
+        self.assertEqual(state.current_screen, Screens.IDEA_CUSTOM_INPUT)
+        self.assertTrue(mock_query.edit_message_text.called)
+
+        # 2. Send custom niche text
+        msg_update = MagicMock()
+        msg_update.effective_chat.id = self.user.chat_id
+        msg_update.effective_user.id = self.user.user_id
+        msg_update.message = AsyncMock()
+        msg_update.message.text = "សាលាបង្រៀនធ្វើម្ហូបអនឡាញ"
+        msg_update.message.reply_text = AsyncMock()
+
+        with patch("bot.get_user_key", return_value=self.user), \
+             patch("bot.start_ideas_flow", new_callable=AsyncMock) as mock_ideas_flow:
+            await handle_text_message(msg_update, mock_context)
+
+            # Verified: saved custom niche and called start_ideas_flow with custom niche
+            saved_niche = self.storage.get_user_niche(self.user)
+            self.assertEqual(saved_niche, "សាលាបង្រៀនធ្វើម្ហូបអនឡាញ")
+            mock_ideas_flow.assert_called_once_with(
+                msg_update, mock_context, category="សាលាបង្រៀនធ្វើម្ហូបអនឡាញ"
+            )
+
 if __name__ == "__main__":
     unittest.main()
 

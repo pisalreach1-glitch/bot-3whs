@@ -381,6 +381,9 @@ def get_ideas_categories_keyboard(saved_niche: Optional[str] = None) -> InlineKe
             InlineKeyboardButton(f"🎯 វិស័យបច្ចុប្បន្ន ({saved_niche})", callback_data=encode_menu("ideacat:current"))
         ])
     keyboard.append([
+        InlineKeyboardButton("✏️ បញ្ចូលវិស័យផ្ទាល់ខ្លួន", callback_data=encode_menu("ideacat:custom"))
+    ])
+    keyboard.append([
         InlineKeyboardButton("⬅️ ត្រឡប់ក្រោយ", callback_data=encode_nav("home")),
         InlineKeyboardButton("🏠 Menu", callback_data=encode_nav("home")),
     ])
